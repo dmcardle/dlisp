@@ -113,7 +113,7 @@ fn parse_application<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a
     match arg_tokens {
         [Token::RightParen, tail @ ..] => {
             let application = Expr::Application(Box::new(left), right);
-            Ok((application, arg_tokens))
+            Ok((application, tail))
         }
         _ => Err(ParseError::Generic),
     }
@@ -138,6 +138,51 @@ fn parse(code: &str) -> Result<Expr, ParseError> {
         println!("UNPARSED TAIL: {:?}", tail);
     }
     Ok(expr)
+}
+
+#[derive(Debug)]
+enum RuntimeError {
+    Uncallable,
+    Unprintable,
+    UnknownFunction(String),
+}
+
+fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
+    let mut pieces = Vec::new();
+    for arg in args {
+        match eval(arg)? {
+            Expr::AtomNum(n) => {
+                pieces.push(format!("{}", n));
+            }
+            Expr::AtomStr(s) => {
+                pieces.push(format!("{}", s));
+            }
+            Expr::Symbol(s) => {
+                pieces.push(format!("(quote {})", s));
+            }
+            Expr::Application(_, _) => {
+                return Err(RuntimeError::Unprintable);
+            }
+        }
+    }
+    let joined = pieces.join(" ");
+    println!("{}", joined);
+    Ok(Expr::AtomStr(joined))
+}
+
+fn eval(expr: Expr) -> Result<Expr, RuntimeError> {
+    match expr {
+        Expr::AtomNum(_) => Ok(expr),
+        Expr::AtomStr(_) => Ok(expr),
+        Expr::Symbol(_) => Ok(expr),
+        Expr::Application(boxed_expr, args) => match *boxed_expr {
+            Expr::Symbol(func_name) => match func_name.as_str() {
+                "print" => builtin_print(args),
+                _ => Err(RuntimeError::UnknownFunction(func_name)),
+            },
+            _ => Err(RuntimeError::Uncallable),
+        },
+    }
 }
 
 fn main() {
@@ -175,7 +220,11 @@ fn main() {
             }
         }
 
-        println!("Parsed: {:?}", parse(&buffer));
+        let expr = parse(&buffer);
+        println!("Parsed: {:?}", expr);
+        if let Ok(expr) = expr {
+            println!("Evaluated: {:?}", eval(expr));
+        }
     }
 }
 
