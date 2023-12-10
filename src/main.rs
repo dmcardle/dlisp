@@ -6,6 +6,7 @@ enum Expr {
     AtomStr(String),
     Symbol(String),
     Application(Box<Expr>, Vec<Expr>),
+    Quoted(Vec<Expr>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -144,6 +145,7 @@ fn parse(code: &str) -> Result<Expr, ParseError> {
 enum RuntimeError {
     Uncallable,
     Unprintable,
+    Unaddable,
     UnknownFunction(String),
 }
 
@@ -158,7 +160,10 @@ fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
                 pieces.push(format!("{}", s));
             }
             Expr::Symbol(s) => {
-                pieces.push(format!("(quote {})", s));
+                pieces.push(format!("{}", s));
+            }
+            Expr::Quoted(expr) => {
+                pieces.push(format!("{:?}", expr));
             }
             Expr::Application(_, _) => {
                 return Err(RuntimeError::Unprintable);
@@ -170,14 +175,32 @@ fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
     Ok(Expr::AtomStr(joined))
 }
 
+fn builtin_add(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
+    let mut sum = 0;
+    for arg in args {
+        match eval(arg)? {
+            Expr::AtomNum(n) => {
+                sum += n;
+            }
+            _ => {
+                return Err(RuntimeError::Unaddable);
+            }
+        }
+    }
+    Ok(Expr::AtomNum(sum))
+}
+
 fn eval(expr: Expr) -> Result<Expr, RuntimeError> {
     match expr {
         Expr::AtomNum(_) => Ok(expr),
         Expr::AtomStr(_) => Ok(expr),
         Expr::Symbol(_) => Ok(expr),
+        Expr::Quoted(_) => Ok(expr),
         Expr::Application(boxed_expr, args) => match *boxed_expr {
             Expr::Symbol(func_name) => match func_name.as_str() {
+                "quote" => Ok(Expr::Quoted(args)),
                 "print" => builtin_print(args),
+                "add" => builtin_add(args),
                 _ => Err(RuntimeError::UnknownFunction(func_name)),
             },
             _ => Err(RuntimeError::Uncallable),
