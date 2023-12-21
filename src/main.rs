@@ -65,30 +65,7 @@ fn eat_symbol_token(s: &str) -> Result<(Token, &str), ParseError> {
 enum ParseError {
     ParseNum,
     Generic,
-    NotAscii,
-    UnexpectedToken(String),
     EmptyString,
-}
-
-fn lex_assuming_whitespace(code: &str) -> Result<Vec<Token>, ParseError> {
-    let mut out = Vec::new();
-    for chunk in code.split_whitespace() {
-        out.push(match chunk {
-            "(" => Token::LeftParen,
-            ")" => Token::RightParen,
-            "'" => Token::SingleQuote,
-            _ => {
-                if let Ok(n) = chunk.parse::<i32>() {
-                    Token::Num(n)
-                } else if &chunk[0..1] == "\"" && &chunk[chunk.len() - 1..] == "\"" {
-                    Token::String(&chunk[1..chunk.len() - 1])
-                } else {
-                    Token::Symbol(&chunk)
-                }
-            }
-        })
-    }
-    Ok(out)
 }
 
 fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
