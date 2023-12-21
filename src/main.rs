@@ -72,6 +72,25 @@ impl Token<'_> {
     }
 }
 
+#[derive(Debug)]
+enum RuntimeError {
+    Uncallable,
+    Unprintable,
+    Unaddable,
+    UnknownFunction(String),
+}
+
+impl Display for RuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuntimeError::Uncallable => write!(f, "Uncallable"),
+            RuntimeError::Unprintable => write!(f, "Unprintable"),
+            RuntimeError::Unaddable => write!(f, "Unaddable"),
+            RuntimeError::UnknownFunction(s) => write!(f, "UnknownFunction {}", s),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 enum Expr {
     AtomNum(i32),
@@ -81,12 +100,34 @@ enum Expr {
     Quoted(Vec<Expr>),
 }
 
-#[derive(Debug)]
-enum RuntimeError {
-    Uncallable,
-    Unprintable,
-    Unaddable,
-    UnknownFunction(String),
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::AtomNum(n) => write!(f, "{}", n),
+            Expr::AtomStr(s) => write!(f, "\"{}\"", s),
+            Expr::Symbol(s) => write!(f, "'{}", s),
+            Expr::Application(e, args) => {
+                write!(f, "(")?;
+                write!(f, "{}", e)?;
+                write!(
+                    f,
+                    "{}",
+                    args.iter()
+                        .map(|a| format!("{}", a))
+                        .fold(String::new(), |a, b| format!("{} {}", a, b))
+                )?;
+                write!(f, ")")
+            }
+            Expr::Quoted(exprs) => write!(
+                f,
+                "(quote {})",
+                exprs
+                    .iter()
+                    .map(|a| format!("{}", a))
+                    .fold(String::new(), |a, b| format!("{} {}", a, b))
+            ),
+        }
+    }
 }
 
 impl Expr {
@@ -229,7 +270,14 @@ fn main() {
         let expr = Expr::parse(&buffer);
         println!("Parsed: {:?}", expr);
         if let Ok(expr) = expr {
-            println!("Evaluated: {:?}", Expr::eval(expr));
+            match Expr::eval(expr) {
+                Ok(value) => {
+                    println!("{}", value);
+                }
+                Err(e) => {
+                    println!("ERROR {}", e);
+                }
+            }
         }
     }
 }
