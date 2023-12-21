@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::io::Write;
 
 #[derive(Debug, PartialEq)]
@@ -15,6 +16,16 @@ enum ParseError {
     ParseNum,
     Generic,
     EmptyString,
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::ParseNum => write!(f, "Error parsing number"),
+            ParseError::Generic => write!(f, "Generic error"),
+            ParseError::EmptyString => write!(f, "Expected token"),
+        }
+    }
 }
 
 impl Token<'_> {
@@ -78,6 +89,7 @@ enum RuntimeError {
     Unprintable,
     Unaddable,
     UnknownFunction(String),
+    WrongNumArgs { want: usize, got: usize },
 }
 
 impl Display for RuntimeError {
@@ -86,7 +98,10 @@ impl Display for RuntimeError {
             RuntimeError::Uncallable => write!(f, "Uncallable"),
             RuntimeError::Unprintable => write!(f, "Unprintable"),
             RuntimeError::Unaddable => write!(f, "Unaddable"),
-            RuntimeError::UnknownFunction(s) => write!(f, "UnknownFunction {}", s),
+            RuntimeError::UnknownFunction(s) => write!(f, "Unknown function {}", s),
+            RuntimeError::WrongNumArgs { want, got } => {
+                write!(f, "Wanted {} args, but got {}", want, got)
+            }
         }
     }
 }
@@ -181,12 +196,33 @@ impl Expr {
             Expr::Application(boxed_expr, args) => match *boxed_expr {
                 Expr::Symbol(func_name) => match func_name.as_str() {
                     "quote" => Ok(Expr::Quoted(args)),
+                    "cond" => Self::builtin_cond(args),
                     "print" => Self::builtin_print(args),
                     "add" => Self::builtin_add(args),
                     _ => Err(RuntimeError::UnknownFunction(func_name)),
                 },
                 _ => Err(RuntimeError::Uncallable),
             },
+        }
+    }
+
+    fn builtin_cond(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
+        const NUM_ARGS: usize = 3;
+        if args.len() != NUM_ARGS {
+            return Err(RuntimeError::WrongNumArgs {
+                want: NUM_ARGS,
+                got: args.len(),
+            });
+        }
+
+        let mut args = args;
+        let e2 = args.pop().unwrap();
+        let e1 = args.pop().unwrap();
+        let selector = args.pop().unwrap();
+
+        match Expr::eval(selector)? {
+            Expr::AtomNum(0) => Expr::eval(e2),
+            _ => Expr::eval(e1),
         }
     }
 
@@ -321,5 +357,46 @@ mod tests {
                 vec![Expr::AtomNum(123), Expr::AtomStr(String::from("abc")),]
             ))
         );
+    }
+
+    #[test]
+    fn test_cond() {
+        let expr = Expr::parse("(cond 0 \"truth\" \"lies\")").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("lies")));
+
+        let expr = Expr::parse("(cond 1 \"truth\" \"lies\")").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+
+        let expr = Expr::parse("(cond 2 \"truth\" \"lies\")").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+
+        let expr = Expr::parse("(cond \"x\" \"truth\" \"lies\")").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+    }
+
+    #[test]
+    fn test_cond_complex_selector() {
+        let expr = Expr::parse("(cond (add 0 0) \"truth\" \"lies\")").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("lies")));
+
+        let expr = Expr::parse("(cond (add 1 0) \"truth\" \"lies\")").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+    }
+
+    #[test]
+    fn test_cond_complex_result() {
+        let expr = Expr::parse("(cond 1 (cond 0 \"a\" \"b\") \"c\")").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("b")));
+
+        let expr = Expr::parse("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
+        let expr = Expr::eval(expr).unwrap();
+        assert_eq!(expr, Expr::AtomStr(String::from("b")));
     }
 }
