@@ -81,45 +81,6 @@ enum Expr {
     Quoted(Vec<Expr>),
 }
 
-fn parse_application<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a>]), ParseError> {
-    let (left, arg_tokens) = parse_expr(tokens)?;
-
-    let mut right = Vec::new();
-    let mut arg_tokens = arg_tokens;
-    while let Ok((expr, tail)) = parse_expr(arg_tokens) {
-        right.push(expr);
-        arg_tokens = tail;
-    }
-    match arg_tokens {
-        [Token::RightParen, tail @ ..] => {
-            let application = Expr::Application(Box::new(left), right);
-            Ok((application, tail))
-        }
-        _ => Err(ParseError::Generic),
-    }
-}
-
-fn parse_expr<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a>]), ParseError> {
-    match tokens {
-        [Token::Num(n), tail @ ..] => Ok((Expr::AtomNum(*n), tail)),
-        [Token::String(s), tail @ ..] => Ok((Expr::AtomStr(String::from(*s)), tail)),
-        [Token::Symbol(s), tail @ ..] => Ok((Expr::Symbol(String::from(*s)), tail)),
-        [Token::LeftParen, tail @ ..] => parse_application(tail),
-        [Token::RightParen, ..] => Err(ParseError::Generic),
-        [Token::SingleQuote, ..] => Err(ParseError::Generic),
-        [] => Err(ParseError::EmptyString),
-    }
-}
-
-fn parse(code: &str) -> Result<Expr, ParseError> {
-    let tokens: Vec<Token> = Token::lex(code)?;
-    let (expr, tail) = parse_expr(&tokens)?;
-    if tail.len() > 0 {
-        println!("UNPARSED TAIL: {:?}", tail);
-    }
-    Ok(expr)
-}
-
 #[derive(Debug)]
 enum RuntimeError {
     Uncallable,
@@ -128,62 +89,105 @@ enum RuntimeError {
     UnknownFunction(String),
 }
 
-fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
-    let mut pieces = Vec::new();
-    for arg in args {
-        match eval(arg)? {
-            Expr::AtomNum(n) => {
-                pieces.push(format!("{}", n));
-            }
-            Expr::AtomStr(s) => {
-                pieces.push(format!("{}", s));
-            }
-            Expr::Symbol(s) => {
-                pieces.push(format!("{}", s));
-            }
-            Expr::Quoted(expr) => {
-                pieces.push(format!("{:?}", expr));
-            }
-            Expr::Application(_, _) => {
-                return Err(RuntimeError::Unprintable);
-            }
+impl Expr {
+    pub fn parse(code: &str) -> Result<Expr, ParseError> {
+        let tokens: Vec<Token> = Token::lex(code)?;
+        let (expr, tail) = Self::parse_expr(&tokens)?;
+        if tail.len() > 0 {
+            println!("UNPARSED TAIL: {:?}", tail);
+        }
+        Ok(expr)
+    }
+
+    fn parse_expr<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a>]), ParseError> {
+        match tokens {
+            [Token::Num(n), tail @ ..] => Ok((Expr::AtomNum(*n), tail)),
+            [Token::String(s), tail @ ..] => Ok((Expr::AtomStr(String::from(*s)), tail)),
+            [Token::Symbol(s), tail @ ..] => Ok((Expr::Symbol(String::from(*s)), tail)),
+            [Token::LeftParen, tail @ ..] => Self::parse_application(tail),
+            [Token::RightParen, ..] => Err(ParseError::Generic),
+            [Token::SingleQuote, ..] => Err(ParseError::Generic),
+            [] => Err(ParseError::EmptyString),
         }
     }
-    let joined = pieces.join(" ");
-    println!("{}", joined);
-    Ok(Expr::AtomStr(joined))
-}
 
-fn builtin_add(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
-    let mut sum = 0;
-    for arg in args {
-        match eval(arg)? {
-            Expr::AtomNum(n) => {
-                sum += n;
+    fn parse_application<'a>(
+        tokens: &'a [Token<'a>],
+    ) -> Result<(Expr, &'a [Token<'a>]), ParseError> {
+        let (left, arg_tokens) = Self::parse_expr(tokens)?;
+
+        let mut right = Vec::new();
+        let mut arg_tokens = arg_tokens;
+        while let Ok((expr, tail)) = Self::parse_expr(arg_tokens) {
+            right.push(expr);
+            arg_tokens = tail;
+        }
+        match arg_tokens {
+            [Token::RightParen, tail @ ..] => {
+                let application = Expr::Application(Box::new(left), right);
+                Ok((application, tail))
             }
-            _ => {
-                return Err(RuntimeError::Unaddable);
-            }
+            _ => Err(ParseError::Generic),
         }
     }
-    Ok(Expr::AtomNum(sum))
-}
 
-fn eval(expr: Expr) -> Result<Expr, RuntimeError> {
-    match expr {
-        Expr::AtomNum(_) => Ok(expr),
-        Expr::AtomStr(_) => Ok(expr),
-        Expr::Symbol(_) => Ok(expr),
-        Expr::Quoted(_) => Ok(expr),
-        Expr::Application(boxed_expr, args) => match *boxed_expr {
-            Expr::Symbol(func_name) => match func_name.as_str() {
-                "quote" => Ok(Expr::Quoted(args)),
-                "print" => builtin_print(args),
-                "add" => builtin_add(args),
-                _ => Err(RuntimeError::UnknownFunction(func_name)),
+    pub fn eval(expr: Expr) -> Result<Expr, RuntimeError> {
+        match expr {
+            Expr::AtomNum(_) => Ok(expr),
+            Expr::AtomStr(_) => Ok(expr),
+            Expr::Symbol(_) => Ok(expr),
+            Expr::Quoted(_) => Ok(expr),
+            Expr::Application(boxed_expr, args) => match *boxed_expr {
+                Expr::Symbol(func_name) => match func_name.as_str() {
+                    "quote" => Ok(Expr::Quoted(args)),
+                    "print" => Self::builtin_print(args),
+                    "add" => Self::builtin_add(args),
+                    _ => Err(RuntimeError::UnknownFunction(func_name)),
+                },
+                _ => Err(RuntimeError::Uncallable),
             },
-            _ => Err(RuntimeError::Uncallable),
-        },
+        }
+    }
+
+    fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
+        let mut pieces = Vec::new();
+        for arg in args {
+            match Self::eval(arg)? {
+                Expr::AtomNum(n) => {
+                    pieces.push(format!("{}", n));
+                }
+                Expr::AtomStr(s) => {
+                    pieces.push(format!("{}", s));
+                }
+                Expr::Symbol(s) => {
+                    pieces.push(format!("{}", s));
+                }
+                Expr::Quoted(expr) => {
+                    pieces.push(format!("{:?}", expr));
+                }
+                Expr::Application(_, _) => {
+                    return Err(RuntimeError::Unprintable);
+                }
+            }
+        }
+        let joined = pieces.join(" ");
+        println!("{}", joined);
+        Ok(Expr::AtomStr(joined))
+    }
+
+    fn builtin_add(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
+        let mut sum = 0;
+        for arg in args {
+            match Self::eval(arg)? {
+                Expr::AtomNum(n) => {
+                    sum += n;
+                }
+                _ => {
+                    return Err(RuntimeError::Unaddable);
+                }
+            }
+        }
+        Ok(Expr::AtomNum(sum))
     }
 }
 
@@ -222,10 +226,10 @@ fn main() {
             }
         }
 
-        let expr = parse(&buffer);
+        let expr = Expr::parse(&buffer);
         println!("Parsed: {:?}", expr);
         if let Ok(expr) = expr {
-            println!("Evaluated: {:?}", eval(expr));
+            println!("Evaluated: {:?}", Expr::eval(expr));
         }
     }
 }
@@ -263,7 +267,7 @@ mod tests {
     #[test]
     fn test_parse() {
         assert_eq!(
-            parse("(print 123 \"abc\")"),
+            Expr::parse("(print 123 \"abc\")"),
             Ok(Expr::Application(
                 Box::new(Expr::Symbol(String::from("print"))),
                 vec![Expr::AtomNum(123), Expr::AtomStr(String::from("abc")),]
