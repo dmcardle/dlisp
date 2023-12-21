@@ -269,8 +269,6 @@ impl Expr {
 }
 
 fn main() {
-    println!("{:?}", Token::lex("( print 42 )"));
-
     loop {
         print!(">>> ");
         if std::io::stdout().flush().is_err() {
@@ -285,8 +283,6 @@ fn main() {
 
         match Token::lex(&buffer) {
             Ok(tokens) => {
-                println!("Tokenized: {:?}", tokens);
-
                 // If there's a single token, we may want to interpret it as a
                 // REPL command.
                 if tokens.len() == 1 {
@@ -298,13 +294,12 @@ fn main() {
                     }
                 }
             }
-            err => {
-                println!("Error while tokenizing: {:?}", err);
+            Err(e) => {
+                println!("Error while tokenizing: {}", e);
             }
         }
 
         let expr = Expr::parse(&buffer);
-        println!("Parsed: {:?}", expr);
         if let Ok(expr) = expr {
             match Expr::eval(expr) {
                 Ok(value) => {
