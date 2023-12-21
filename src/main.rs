@@ -1,15 +1,6 @@
 use std::io::Write;
 
 #[derive(Debug, PartialEq)]
-enum Expr {
-    AtomNum(i32),
-    AtomStr(String),
-    Symbol(String),
-    Application(Box<Expr>, Vec<Expr>),
-    Quoted(Vec<Expr>),
-}
-
-#[derive(Debug, PartialEq)]
 enum Token<'a> {
     Num(i32),
     String(&'a str),
@@ -19,8 +10,26 @@ enum Token<'a> {
     SingleQuote,
 }
 
+#[derive(Debug, PartialEq)]
+enum ParseError {
+    ParseNum,
+    Generic,
+    EmptyString,
+}
+
 impl Token<'_> {
-    pub fn eat_token(s: &str) -> Result<(Token, &str), ParseError> {
+    pub fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
+        let mut out = Vec::new();
+        let mut token_buf: &str = &code;
+        while token_buf.len() > 0 && token_buf != "\n" {
+            let (token, tail) = Token::eat_token(&token_buf)?;
+            out.push(token);
+            token_buf = tail;
+        }
+        Ok(out)
+    }
+
+    fn eat_token(s: &str) -> Result<(Token, &str), ParseError> {
         if s.len() == 0 {
             return Err(ParseError::EmptyString);
         }
@@ -64,21 +73,12 @@ impl Token<'_> {
 }
 
 #[derive(Debug, PartialEq)]
-enum ParseError {
-    ParseNum,
-    Generic,
-    EmptyString,
-}
-
-fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
-    let mut out = Vec::new();
-    let mut token_buf: &str = &code;
-    while token_buf.len() > 0 && token_buf != "\n" {
-        let (token, tail) = Token::eat_token(&token_buf)?;
-        out.push(token);
-        token_buf = tail;
-    }
-    Ok(out)
+enum Expr {
+    AtomNum(i32),
+    AtomStr(String),
+    Symbol(String),
+    Application(Box<Expr>, Vec<Expr>),
+    Quoted(Vec<Expr>),
 }
 
 fn parse_application<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a>]), ParseError> {
@@ -112,7 +112,7 @@ fn parse_expr<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a>]), Pa
 }
 
 fn parse(code: &str) -> Result<Expr, ParseError> {
-    let tokens: Vec<Token> = lex(code)?;
+    let tokens: Vec<Token> = Token::lex(code)?;
     let (expr, tail) = parse_expr(&tokens)?;
     if tail.len() > 0 {
         println!("UNPARSED TAIL: {:?}", tail);
@@ -188,7 +188,7 @@ fn eval(expr: Expr) -> Result<Expr, RuntimeError> {
 }
 
 fn main() {
-    println!("{:?}", lex("( print 42 )"));
+    println!("{:?}", Token::lex("( print 42 )"));
 
     loop {
         print!(">>> ");
@@ -202,7 +202,7 @@ fn main() {
             return;
         }
 
-        match lex(&buffer) {
+        match Token::lex(&buffer) {
             Ok(tokens) => {
                 println!("Tokenized: {:?}", tokens);
 
@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn test_lex() {
         assert_eq!(
-            lex("(print 123 \"abc\")"),
+            Token::lex("(print 123 \"abc\")"),
             Ok(vec![
                 Token::LeftParen,
                 Token::Symbol("print"),
