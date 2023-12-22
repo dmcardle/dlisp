@@ -52,7 +52,7 @@ impl Token<'_> {
         let mut chars = s.chars().peekable();
         match chars.peek().ok_or(ParseError::Generic)? {
             ' ' => Token::eat_token(&s[1..]),
-            '0'..='9' => Token::eat_num_token(&s),
+            '-' | '0'..='9' => Token::eat_num_token(&s),
             '"' => Token::eat_string_token(&s[1..]),
             'A'..='Z' | 'a'..='z' | '_' => Token::eat_symbol_token(&s),
             '(' => Ok((Token::LeftParen, &s[1..])),
@@ -63,14 +63,42 @@ impl Token<'_> {
     }
 
     fn eat_num_token(s: &str) -> Result<(Token, &str), ParseError> {
-        let len = s.chars().take_while(|c| c.is_numeric()).count();
-        if len == 0 {
-            return Err(ParseError::ParseNum);
+        assert_ne!(s.len(), 0);
+        println!("eat_num_token: {}", s);
+
+        let is_negative = s.chars().next().unwrap() == '-';
+        if let Some(c) = s.chars().skip(1).next() {
+            if c == '-' {
+                return Err(ParseError::ParseNum);
+            }
         }
-        if let Ok(n) = s[0..len].parse::<i32>() {
-            Ok((Token::Num(n), &s[len..]))
-        } else {
+
+        let mut chars = s.chars();
+        if is_negative {
+            chars.next();
+        }
+
+        let orig_len = chars.as_str().len();
+
+        let mut value: i32 = 0;
+        let mut suffix = s;
+        while let Some(c) = chars.next() {
+            match c {
+                '0'..='9' => {
+                    value = 10 * value + ((c as i32) - ('0' as i32));
+                    suffix = chars.as_str();
+                }
+                _ => break,
+            }
+        }
+
+        if chars.as_str().len() == orig_len {
             Err(ParseError::ParseNum)
+        } else {
+            if is_negative {
+                value *= -1;
+            }
+            Ok((Token::Num(value), suffix))
         }
     }
 
@@ -138,8 +166,8 @@ impl Display for RuntimeError {
 
 #[derive(Debug, PartialEq)]
 enum Expr {
-    AtomNum(i32),
-    AtomStr(String),
+    Int(i32),
+    String(String),
     Symbol(String),
     Application(Box<Expr>, Vec<Expr>),
     Quoted(Vec<Expr>),
@@ -148,8 +176,8 @@ enum Expr {
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::AtomNum(n) => write!(f, "{}", n),
-            Expr::AtomStr(s) => write!(f, "\"{}\"", s),
+            Expr::Int(n) => write!(f, "{}", n),
+            Expr::String(s) => write!(f, "\"{}\"", s),
             Expr::Symbol(s) => write!(f, "'{}", s),
             Expr::Application(e, args) => {
                 write!(f, "(")?;
@@ -187,8 +215,8 @@ impl Expr {
 
     fn parse_expr<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a>]), ParseError> {
         match tokens {
-            [Token::Num(n), tail @ ..] => Ok((Expr::AtomNum(*n), tail)),
-            [Token::String(s), tail @ ..] => Ok((Expr::AtomStr(String::from(*s)), tail)),
+            [Token::Num(n), tail @ ..] => Ok((Expr::Int(*n), tail)),
+            [Token::String(s), tail @ ..] => Ok((Expr::String(String::from(*s)), tail)),
             [Token::Symbol(s), tail @ ..] => Ok((Expr::Symbol(String::from(*s)), tail)),
             [Token::LeftParen, tail @ ..] => Self::parse_application(tail),
             [Token::RightParen, ..] => Err(ParseError::Generic),
@@ -219,8 +247,8 @@ impl Expr {
 
     pub fn eval(expr: Expr) -> Result<Expr, RuntimeError> {
         match expr {
-            Expr::AtomNum(_) => Ok(expr),
-            Expr::AtomStr(_) => Ok(expr),
+            Expr::Int(_) => Ok(expr),
+            Expr::String(_) => Ok(expr),
             Expr::Symbol(_) => Ok(expr),
             Expr::Quoted(_) => Ok(expr),
             Expr::Application(boxed_expr, args) => match *boxed_expr {
@@ -251,7 +279,7 @@ impl Expr {
         let selector = args.pop().unwrap();
 
         match Expr::eval(selector)? {
-            Expr::AtomNum(0) => Expr::eval(e2),
+            Expr::Int(0) => Expr::eval(e2),
             _ => Expr::eval(e1),
         }
     }
@@ -260,10 +288,10 @@ impl Expr {
         let mut pieces = Vec::new();
         for arg in args {
             match Self::eval(arg)? {
-                Expr::AtomNum(n) => {
+                Expr::Int(n) => {
                     pieces.push(format!("{}", n));
                 }
-                Expr::AtomStr(s) => {
+                Expr::String(s) => {
                     pieces.push(format!("{}", s));
                 }
                 Expr::Symbol(s) => {
@@ -279,14 +307,14 @@ impl Expr {
         }
         let joined = pieces.join(" ");
         println!("{}", joined);
-        Ok(Expr::AtomStr(joined))
+        Ok(Expr::String(joined))
     }
 
     fn builtin_add(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
         let mut sum = 0;
         for arg in args {
             match Self::eval(arg)? {
-                Expr::AtomNum(n) => {
+                Expr::Int(n) => {
                     sum += n;
                 }
                 _ => {
@@ -294,7 +322,7 @@ impl Expr {
                 }
             }
         }
-        Ok(Expr::AtomNum(sum))
+        Ok(Expr::Int(sum))
     }
 }
 
@@ -374,6 +402,22 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_num() {
+        assert_eq!(Token::lex("0"), Ok(vec![Token::Num(0)]));
+        assert_eq!(Token::lex("123"), Ok(vec![Token::Num(123)]));
+        assert_eq!(Token::lex("-0"), Ok(vec![Token::Num(0)]));
+        assert_eq!(Token::lex("-123"), Ok(vec![Token::Num(-123)]));
+        assert_eq!(Token::lex("--123"), Err(ParseError::ParseNum));
+        assert_eq!(Token::lex("---123"), Err(ParseError::ParseNum));
+
+        // TODO: support hexadecimal number literals.
+        assert_eq!(
+            Token::lex("0x123"),
+            Ok(vec![Token::Num(0), Token::Symbol("x123")])
+        );
+    }
+
+    #[test]
     fn test_tokenize_string() {
         // Empty string.
         assert_eq!(Token::lex("\"\""), Ok(vec![Token::String("")]));
@@ -410,7 +454,7 @@ mod tests {
             Expr::parse("(print 123 \"abc\")"),
             Ok(Expr::Application(
                 Box::new(Expr::Symbol(String::from("print"))),
-                vec![Expr::AtomNum(123), Expr::AtomStr(String::from("abc")),]
+                vec![Expr::Int(123), Expr::String(String::from("abc")),]
             ))
         );
     }
@@ -419,40 +463,40 @@ mod tests {
     fn test_cond() {
         let expr = Expr::parse("(cond 0 \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("lies")));
+        assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse("(cond 1 \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+        assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse("(cond 2 \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+        assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse("(cond \"x\" \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+        assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_selector() {
         let expr = Expr::parse("(cond (add 0 0) \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("lies")));
+        assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse("(cond (add 1 0) \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("truth")));
+        assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_result() {
         let expr = Expr::parse("(cond 1 (cond 0 \"a\" \"b\") \"c\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("b")));
+        assert_eq!(expr, Expr::String(String::from("b")));
 
         let expr = Expr::parse("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
         let expr = Expr::eval(expr).unwrap();
-        assert_eq!(expr, Expr::AtomStr(String::from("b")));
+        assert_eq!(expr, Expr::String(String::from("b")));
     }
 }
