@@ -374,18 +374,27 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_string_empty() {
-        assert_eq!(Token::lex("\"\""), Ok(vec![Token::String("")]));
-    }
-
-    #[test]
     fn test_tokenize_string() {
-        assert_eq!(Token::lex("\"foo"), Err(ParseError::UnterminatedString));
+        // Empty string.
+        assert_eq!(Token::lex("\"\""), Ok(vec![Token::String("")]));
+        // Single character strings.
+        assert_eq!(Token::lex("\"a\""), Ok(vec![Token::String("a")]));
+        assert_eq!(Token::lex("\" \""), Ok(vec![Token::String(" ")]));
+        // Strings with spaces.
+        assert_eq!(Token::lex("\" a \""), Ok(vec![Token::String(" a ")]));
+        assert_eq!(Token::lex("\"a \""), Ok(vec![Token::String("a ")]));
+        assert_eq!(Token::lex("\" a\""), Ok(vec![Token::String(" a")]));
+        // Multi-character strings with no spaces.
         assert_eq!(Token::lex("\"foo\""), Ok(vec![Token::String("foo")]));
+        // Unterminated string literals.
+        assert_eq!(Token::lex("\""), Err(ParseError::UnterminatedString));
+        assert_eq!(Token::lex("\"foo"), Err(ParseError::UnterminatedString));
     }
 
     #[test]
     fn test_tokenize_string_escaping() {
+        assert_eq!(Token::lex("\""), Err(ParseError::UnterminatedString));
+        assert_eq!(Token::lex("\"\\"), Err(ParseError::UnterminatedString));
         assert_eq!(Token::lex("\"foo\\\""), Err(ParseError::UnterminatedString));
         assert_eq!(
             Token::lex("\"foo\\\"\""),
