@@ -16,6 +16,7 @@ enum ParseError {
     ParseNum,
     Generic,
     EmptyString,
+    UnterminatedString,
 }
 
 impl Display for ParseError {
@@ -24,6 +25,7 @@ impl Display for ParseError {
             ParseError::ParseNum => write!(f, "Error parsing number"),
             ParseError::Generic => write!(f, "Generic error"),
             ParseError::EmptyString => write!(f, "Expected token"),
+            ParseError::UnterminatedString => write!(f, "Unterminated string literal"),
         }
     }
 }
@@ -69,10 +71,29 @@ impl Token<'_> {
         }
     }
 
+    /// Consume the remainder of a string literal, assuming the opening
+    /// quotation mark has already been consumed.
     fn eat_string_token(s: &str) -> Result<(Token, &str), ParseError> {
-        // TODO: support backslash escaping.
-        let len = s.chars().take_while(|&c| c != '"').count();
-        Ok((Token::String(&s[0..len]), &s[len + 1..]))
+        let mut iter = s.char_indices();
+        let mut escaping = false;
+        while let Some((i, c)) = iter.next() {
+            match c {
+                '\\' => {
+                    escaping = true;
+                    continue;
+                }
+                '"' => {
+                    if !escaping {
+                        return Ok((Token::String(&s[..i]), &s[i + 1..]));
+                    }
+                }
+                _ => {}
+            }
+            if escaping {
+                escaping = false;
+            }
+        }
+        Err(ParseError::UnterminatedString)
     }
     fn eat_symbol_token(s: &str) -> Result<(Token, &str), ParseError> {
         let len = s
@@ -340,6 +361,26 @@ mod tests {
                 Token::String("abc"),
                 Token::RightParen,
             ])
+        );
+    }
+
+    #[test]
+    fn test_tokenize_string_empty() {
+        assert_eq!(Token::lex("\"\""), Ok(vec![Token::String("")]));
+    }
+
+    #[test]
+    fn test_tokenize_string() {
+        assert_eq!(Token::lex("\"foo"), Err(ParseError::UnterminatedString));
+        assert_eq!(Token::lex("\"foo\""), Ok(vec![Token::String("foo")]));
+    }
+
+    #[test]
+    fn test_tokenize_string_escaping() {
+        assert_eq!(Token::lex("\"foo\\\""), Err(ParseError::UnterminatedString));
+        assert_eq!(
+            Token::lex("\"foo\\\"\""),
+            Ok(vec![Token::String("foo\\\"")])
         );
     }
 
