@@ -1,3 +1,6 @@
+#![feature(custom_inner_attributes)]
+#![feature(stmt_expr_attributes)]
+
 use std::fmt::Display;
 use std::io::Write;
 
@@ -78,14 +81,21 @@ impl Token<'_> {
             .char_indices()
             .fold((None, false), |(i_end, is_escaping), (i, c)| {
                 match (i_end, c, is_escaping) {
+                    #![rustfmt::skip]
                     // If we've already found the end, pass it on.
-                    (Some(_), _, _) => (i_end, false),
-                    (_, '\\', _) => (None, !is_escaping),
-                    // If we are not escaping and we found the quotation mark,
-                    // it's the end of the string!
-                    (_, '"', false) => (Some(i), false),
-                    (_, '"', true) => (None, false),
-                    _ => (None, false),
+                    (Some(i),    _,           _) => (Some(i),        false),
+                    // If we found a quotation mark, we may have found the end
+                    // of the string literal!
+                    (      _,  '"',       false) => (Some(i),        false),
+                    (      _,  '"',        true) => (   None,        false),
+                    // Backslashes are never the end of a string literal, but
+                    // they do affect escaping. If we were already escaping,
+                    // this is a true backlsash. Otherwise, escape the next
+                    // character.
+                    (      _, '\\', is_escaping) => (   None, !is_escaping),
+                    // Regular characters have no special semantics. Disable
+                    // escaping and move on.
+                                               _ => (   None,        false),
                 }
             });
         match i_end {
