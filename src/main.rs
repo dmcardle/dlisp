@@ -74,27 +74,26 @@ impl Token<'_> {
     /// Consume the remainder of a string literal, assuming the opening
     /// quotation mark has already been consumed.
     fn eat_string_token(s: &str) -> Result<(Token, &str), ParseError> {
-        let mut iter = s.char_indices();
-        let mut escaping = false;
-        while let Some((i, c)) = iter.next() {
-            match c {
-                '\\' => {
-                    escaping = true;
-                    continue;
+        let (i_end, _) = s
+            .char_indices()
+            .fold((None, false), |(i_end, is_escaping), (i, c)| {
+                match (i_end, c, is_escaping) {
+                    // If we've already found the end, pass it on.
+                    (Some(_), _, _) => (i_end, false),
+                    (_, '\\', _) => (None, !is_escaping),
+                    // If we are not escaping and we found the quotation mark,
+                    // it's the end of the string!
+                    (_, '"', false) => (Some(i), false),
+                    (_, '"', true) => (None, false),
+                    _ => (None, false),
                 }
-                '"' => {
-                    if !escaping {
-                        return Ok((Token::String(&s[..i]), &s[i + 1..]));
-                    }
-                }
-                _ => {}
-            }
-            if escaping {
-                escaping = false;
-            }
+            });
+        match i_end {
+            Some(i) => Ok((Token::String(&s[..i]), &s[i + 1..])),
+            _ => Err(ParseError::UnterminatedString),
         }
-        Err(ParseError::UnterminatedString)
     }
+
     fn eat_symbol_token(s: &str) -> Result<(Token, &str), ParseError> {
         let len = s
             .chars()
@@ -382,6 +381,8 @@ mod tests {
             Token::lex("\"foo\\\"\""),
             Ok(vec![Token::String("foo\\\"")])
         );
+        assert_eq!(Token::lex(r#""\\\""#), Err(ParseError::UnterminatedString));
+        assert_eq!(Token::lex(r#""\\\\""#), Ok(vec![Token::String(r#"\\\\"#)]));
     }
 
     #[test]
