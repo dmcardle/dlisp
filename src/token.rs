@@ -41,6 +41,11 @@ impl Token<'_> {
         Ok(out)
     }
 
+    /// Return the next token and the unlexed remainder of the given string.
+    ///
+    /// TODO: Refactor these methods into a `Tokenizer` struct that mutates a
+    /// single `&str`. I think this will simplify some of this logic where we
+    /// repeatedly figure out what the suffix should be.
     fn eat_token(s: &str) -> Result<(Token, &str), ParseError> {
         if s.len() == 0 {
             return Err(ParseError::EmptyString);
