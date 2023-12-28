@@ -3,8 +3,8 @@
 
 mod token;
 
-use token::Token;
 use token::ParseError;
+use token::Token;
 
 use std::fmt::Display;
 use std::io::Write;
@@ -61,8 +61,12 @@ impl Display for Expr {
 }
 
 impl Expr {
-    pub fn parse(code: &str) -> Result<Expr, ParseError> {
+    pub fn parse_str(code: &str) -> Result<Expr, ParseError> {
         let tokens: Vec<Token> = Token::lex(code)?;
+        Expr::parse(&tokens)
+    }
+
+    pub fn parse(tokens: &[Token]) -> Result<Expr, ParseError> {
         let (expr, tail) = Self::parse_expr(&tokens)?;
         if tail.len() > 0 {
             println!("UNPARSED TAIL: {:?}", tail);
@@ -196,33 +200,27 @@ fn main() {
             return;
         }
 
-        match Token::lex(&buffer) {
+        match Token::lex(&buffer).as_deref() {
+            // If there's a single token, we may want to interpret it as a REPL
+            // command.
+            Ok([Token::Symbol("quit")]) => {
+                return;
+            }
             Ok(tokens) => {
-                // If there's a single token, we may want to interpret it as a
-                // REPL command.
-                if tokens.len() == 1 {
-                    match &tokens[0] {
-                        Token::Symbol("quit") | Token::Symbol("q") => {
-                            return;
+                let expr = Expr::parse(&tokens);
+                if let Ok(expr) = expr {
+                    match Expr::eval(expr) {
+                        Ok(value) => {
+                            println!("{}", value);
                         }
-                        _ => {}
+                        Err(e) => {
+                            println!("ERROR {}", e);
+                        }
                     }
                 }
             }
             Err(e) => {
                 println!("Error while tokenizing: {}", e);
-            }
-        }
-
-        let expr = Expr::parse(&buffer);
-        if let Ok(expr) = expr {
-            match Expr::eval(expr) {
-                Ok(value) => {
-                    println!("{}", value);
-                }
-                Err(e) => {
-                    println!("ERROR {}", e);
-                }
             }
         }
     }
@@ -286,7 +284,7 @@ mod tests {
     #[test]
     fn test_parse() {
         assert_eq!(
-            Expr::parse("(print 123 \"abc\")"),
+            Expr::parse_str("(print 123 \"abc\")"),
             Ok(Expr::Application(
                 Box::new(Expr::Symbol(String::from("print"))),
                 vec![Expr::Int(123), Expr::String(String::from("abc")),]
@@ -296,41 +294,41 @@ mod tests {
 
     #[test]
     fn test_cond() {
-        let expr = Expr::parse("(cond 0 \"truth\" \"lies\")").unwrap();
+        let expr = Expr::parse_str("(cond 0 \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
-        let expr = Expr::parse("(cond 1 \"truth\" \"lies\")").unwrap();
+        let expr = Expr::parse_str("(cond 1 \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
-        let expr = Expr::parse("(cond 2 \"truth\" \"lies\")").unwrap();
+        let expr = Expr::parse_str("(cond 2 \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
-        let expr = Expr::parse("(cond \"x\" \"truth\" \"lies\")").unwrap();
+        let expr = Expr::parse_str("(cond \"x\" \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_selector() {
-        let expr = Expr::parse("(cond (add 0 0) \"truth\" \"lies\")").unwrap();
+        let expr = Expr::parse_str("(cond (add 0 0) \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
-        let expr = Expr::parse("(cond (add 1 0) \"truth\" \"lies\")").unwrap();
+        let expr = Expr::parse_str("(cond (add 1 0) \"truth\" \"lies\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_result() {
-        let expr = Expr::parse("(cond 1 (cond 0 \"a\" \"b\") \"c\")").unwrap();
+        let expr = Expr::parse_str("(cond 1 (cond 0 \"a\" \"b\") \"c\")").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
 
-        let expr = Expr::parse("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
+        let expr = Expr::parse_str("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
         let expr = Expr::eval(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
     }
