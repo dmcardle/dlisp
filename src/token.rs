@@ -217,4 +217,23 @@ mod tests {
         assert_eq!(Token::lex(r#""\\\""#), Err(ParseError::UnterminatedString));
         assert_eq!(Token::lex(r#""\\\\""#), Ok(vec![Token::String(r#"\\\\"#)]));
     }
+
+    extern crate test;
+    use test::Bencher;
+
+    #[bench]
+    fn bench_string_tokenize(b: &mut Bencher) {
+        const MAX: usize = 1000;
+        b.iter(|| {
+            for n in 0..MAX {
+                // TODO: Figure out how to exclude this setup code from the
+                // benchmark.
+                let big_string: String = std::iter::once('"')
+                    .chain((0..n).map(|i| char::from_u32(i as u32 % 256).unwrap()))
+                    .chain(std::iter::once('"'))
+                    .collect();
+                let _ = test::black_box(Token::lex(&big_string));
+            }
+        });
+    }
 }
