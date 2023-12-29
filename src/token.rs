@@ -172,6 +172,20 @@ mod tests {
     }
 
     #[test]
+    fn test_lex_whitespace() {
+        assert_eq!(
+            Token::lex("(print\t123\r\"abc\")\n"),
+            Ok(vec![
+                Token::LeftParen,
+                Token::Symbol("print"),
+                Token::Num(123),
+                Token::String("abc"),
+                Token::RightParen,
+            ])
+        );
+    }
+
+    #[test]
     fn test_tokenize_num() {
         assert_eq!(Token::lex("0"), Ok(vec![Token::Num(0)]));
         assert_eq!(Token::lex("123"), Ok(vec![Token::Num(123)]));
