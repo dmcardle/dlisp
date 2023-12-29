@@ -29,8 +29,157 @@ pub enum Token<'a> {
     SingleQuote,
 }
 
+/// Tokenizer iterates over [Token] values.
+struct Tokenizer<'a> {
+    view: &'a str,
+    error: Option<ParseError>,
+}
+
+impl<'a> Iterator for Tokenizer<'a> {
+    type Item = Token<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.error.is_some() {
+            return None;
+        }
+
+        // Peek at the first char and delegate to a specialized "next" function.
+        let mut chars = self.view.chars();
+        match chars.next()? {
+            ' ' | '\t' | '\r' | '\n' => {
+                self.view = chars.as_str();
+                self.next()
+            }
+            // TODO: Log `Err` results when squashing with `ok()`.
+            '-' | '0'..='9' => self.next_num().ok(),
+            '"' => self.next_string().ok(),
+            'A'..='Z' | 'a'..='z' | '_' => self.next_symbol().ok(),
+            '(' => {
+                self.view = chars.as_str();
+                Some(Token::LeftParen)
+            }
+            ')' => {
+                self.view = chars.as_str();
+                Some(Token::RightParen)
+            }
+            '\'' => {
+                self.view = chars.as_str();
+                Some(Token::SingleQuote)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<'a> Tokenizer<'a> {
+    fn new(s: &str) -> Tokenizer {
+        println!("NEW TOKENIZER: {}", s);
+        Tokenizer {
+            view: &s,
+            error: None,
+        }
+    }
+
+    fn next_num(&mut self) -> Result<Token<'a>, ParseError> {
+        assert_ne!(self.view.len(), 0);
+
+        let is_negative = self.view.chars().next().unwrap() == '-';
+        if let Some(c) = self.view.chars().skip(1).next() {
+            if c == '-' {
+                return Err(ParseError::ParseNum);
+            }
+        }
+
+        let mut chars = self.view.chars();
+        if is_negative {
+            chars.next();
+        }
+
+        let orig_len = chars.as_str().len();
+
+        let mut value: i32 = 0;
+        let mut suffix = self.view;
+        while let Some(c) = chars.next() {
+            match c {
+                '0'..='9' => {
+                    value = 10 * value + ((c as i32) - ('0' as i32));
+                    suffix = chars.as_str();
+                }
+                _ => break,
+            }
+        }
+
+        if chars.as_str().len() == orig_len {
+            Err(ParseError::ParseNum)
+        } else {
+            if is_negative {
+                value *= -1;
+            }
+            self.view = suffix;
+            Ok(Token::Num(value))
+        }
+    }
+
+    fn next_string(&mut self) -> Result<Token<'a>, ParseError> {
+        // Consume the opening quote.
+        let mut char_indices = self.view.char_indices();
+        let (_, c) = char_indices.next().ok_or(ParseError::Generic)?;
+        if c != '"' {
+            return Err(ParseError::Generic);
+        }
+        // Proceed until we find the ending quote.
+        let (i_end, is_escaping) =
+            char_indices.fold((None, false), |(i_end, is_escaping), (i, c)| {
+                match (i_end, c, is_escaping) {
+                    #![rustfmt::skip]
+                    // If we've already found the end, pass it on.
+                    (Some(i),    _,           _) => (Some(i),        false),
+                    // If we found a quotation mark, we may have found the end
+                    // of the string literal!
+                    (      _,  '"',       false) => (Some(i),        false),
+                    (      _,  '"',        true) => (   None,        false),
+                    // Backslashes are never the end of a string literal, but
+                    // they do affect escaping. If we were already escaping,
+                    // this is a true backlsash. Otherwise, escape the next
+                    // character.
+                    (      _, '\\', is_escaping) => (   None, !is_escaping),
+                    // Regular characters have no special semantics. Disable
+                    // escaping and move on.
+                                               _ => (   None,        false),
+                }
+            });
+        match (i_end, is_escaping) {
+            (Some(i), false) => {
+                let body = &self.view[..i];
+                self.view = &self.view[i + 1..];
+                Ok(Token::String(body))
+            }
+            _ => Err(ParseError::UnterminatedString),
+        }
+    }
+
+    fn next_symbol(&mut self) -> Result<Token<'a>, ParseError> {
+        let len = self
+            .view
+            .chars()
+            .take_while(|&c| c.is_alphanumeric() || c == '_')
+            .count();
+        if len == 0 {
+            Err(ParseError::NoToken)
+        } else {
+            let symbol = &self.view[..len];
+            self.view = &self.view[len..];
+            Ok(Token::Symbol(symbol))
+        }
+    }
+}
+
 impl Token<'_> {
     pub fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
+        for token in Tokenizer::new(code) {
+            println!("TOKEN: {:?}", token);
+        }
+
         let mut out = Vec::new();
         let mut token_buf: &str = &code;
         while token_buf.len() > 0 {
