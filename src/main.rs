@@ -83,7 +83,7 @@ impl Expr {
             [Token::LeftParen, tail @ ..] => Self::parse_application(tail),
             [Token::RightParen, ..] => Err(ParseError::Generic),
             [Token::SingleQuote, ..] => Err(ParseError::Generic),
-            [] => Err(ParseError::EmptyString),
+            [] => Err(ParseError::NoToken),
         }
     }
 

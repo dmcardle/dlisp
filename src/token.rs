@@ -4,7 +4,7 @@ use std::fmt::Display;
 pub enum ParseError {
     ParseNum,
     Generic,
-    EmptyString,
+    NoToken,
     UnterminatedString,
 }
 
@@ -13,7 +13,7 @@ impl Display for ParseError {
         match self {
             ParseError::ParseNum => write!(f, "Error parsing number"),
             ParseError::Generic => write!(f, "Generic error"),
-            ParseError::EmptyString => write!(f, "Expected token"),
+            ParseError::NoToken => write!(f, "Expected token"),
             ParseError::UnterminatedString => write!(f, "Unterminated string literal"),
         }
     }
@@ -33,10 +33,20 @@ impl Token<'_> {
     pub fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
         let mut out = Vec::new();
         let mut token_buf: &str = &code;
-        while token_buf.len() > 0 && token_buf != "\n" {
-            let (token, tail) = Token::eat_token(&token_buf)?;
-            out.push(token);
-            token_buf = tail;
+        while token_buf.len() > 0 {
+            match Token::eat_token(&token_buf) {
+                Ok((token, tail)) => {
+                    out.push(token);
+                    token_buf = tail;
+                }
+                Err(ParseError::NoToken) => {
+                    assert!(token_buf.chars().all(|c| c.is_whitespace()));
+                    break;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
         }
         Ok(out)
     }
@@ -48,11 +58,11 @@ impl Token<'_> {
     /// repeatedly figure out what the suffix should be.
     fn eat_token(s: &str) -> Result<(Token, &str), ParseError> {
         if s.len() == 0 {
-            return Err(ParseError::EmptyString);
+            return Err(ParseError::NoToken);
         }
         let mut chars = s.chars().peekable();
         match chars.peek().ok_or(ParseError::Generic)? {
-            ' ' => Token::eat_token(&s[1..]),
+            ' ' | '\t' | '\r' | '\n' => Token::eat_token(&s[1..]),
             '-' | '0'..='9' => Token::eat_num_token(&s),
             '"' => Token::eat_string_token(&s[1..]),
             'A'..='Z' | 'a'..='z' | '_' => Token::eat_symbol_token(&s),
@@ -175,6 +185,20 @@ mod tests {
     fn test_lex_whitespace() {
         assert_eq!(
             Token::lex("(print\t123\r\"abc\")\n"),
+            Ok(vec![
+                Token::LeftParen,
+                Token::Symbol("print"),
+                Token::Num(123),
+                Token::String("abc"),
+                Token::RightParen,
+            ])
+        );
+    }
+
+    #[test]
+    fn test_lex_whitespace_trailing_tab() {
+        assert_eq!(
+            Token::lex("(print\t123\r\"abc\")\t"),
             Ok(vec![
                 Token::LeftParen,
                 Token::Symbol("print"),
