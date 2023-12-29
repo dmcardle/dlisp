@@ -29,76 +29,60 @@ pub enum Token<'a> {
     SingleQuote,
 }
 
-/// Tokenizer iterates over [Token] values.
+/// The purpose of [Tokenizer] is to iterate [Token] values from the given
+/// string. Technically, it yields [Result<Token, ParseError>] values, which can
+/// be collected into a [Result<Vec<Token>, ParseError>].
 struct Tokenizer<'a> {
     view: &'a str,
-    error: Option<ParseError>,
 }
 
 impl<'a> Iterator for Tokenizer<'a> {
-    type Item = Token<'a>;
+    type Item = Result<Token<'a>, ParseError>;
 
+    /// Yield the next token result.
     fn next(&mut self) -> Option<Self::Item> {
-        if self.error.is_some() {
-            return None;
-        }
-
-        // Peek at the first char and delegate to a specialized "next" function.
         let mut chars = self.view.chars();
         match chars.next()? {
-            ' ' | '\t' | '\r' | '\n' => {
+            '-' | '0'..='9' => Some(self.next_num()),
+            'A'..='Z' | 'a'..='z' | '_' => Some(self.next_symbol()),
+            c => {
                 self.view = chars.as_str();
-                self.next()
+                match c {
+                    ' ' | '\t' | '\r' | '\n' => self.next(),
+                    '"' => Some(self.next_string()),
+                    '(' => Some(Ok(Token::LeftParen)),
+                    ')' => Some(Ok(Token::RightParen)),
+                    '\'' => Some(Ok(Token::SingleQuote)),
+                    _ => None,
+                }
             }
-            // TODO: Log `Err` results when squashing with `ok()`.
-            '-' | '0'..='9' => self.next_num().ok(),
-            '"' => self.next_string().ok(),
-            'A'..='Z' | 'a'..='z' | '_' => self.next_symbol().ok(),
-            '(' => {
-                self.view = chars.as_str();
-                Some(Token::LeftParen)
-            }
-            ')' => {
-                self.view = chars.as_str();
-                Some(Token::RightParen)
-            }
-            '\'' => {
-                self.view = chars.as_str();
-                Some(Token::SingleQuote)
-            }
-            _ => None,
         }
     }
 }
 
 impl<'a> Tokenizer<'a> {
     fn new(s: &str) -> Tokenizer {
-        println!("NEW TOKENIZER: {}", s);
-        Tokenizer {
-            view: &s,
-            error: None,
-        }
+        Tokenizer { view: &s }
     }
 
     fn next_num(&mut self) -> Result<Token<'a>, ParseError> {
         assert_ne!(self.view.len(), 0);
 
+        // Consume the optional leading hyphen.
         let is_negative = self.view.chars().next().unwrap() == '-';
-        if let Some(c) = self.view.chars().skip(1).next() {
-            if c == '-' {
-                return Err(ParseError::ParseNum);
-            }
-        }
-
-        let mut chars = self.view.chars();
         if is_negative {
-            chars.next();
+            self.view = &self.view[1..];
         }
 
-        let orig_len = chars.as_str().len();
+        if let Some('-') = self.view.chars().next() {
+            return Err(ParseError::ParseNum);
+        }
+
+        let orig_len = self.view.len();
 
         let mut value: i32 = 0;
         let mut suffix = self.view;
+        let mut chars = suffix.chars();
         while let Some(c) = chars.next() {
             match c {
                 '0'..='9' => {
@@ -121,16 +105,12 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn next_string(&mut self) -> Result<Token<'a>, ParseError> {
-        // Consume the opening quote.
-        let mut char_indices = self.view.char_indices();
-        let (_, c) = char_indices.next().ok_or(ParseError::Generic)?;
-        if c != '"' {
-            return Err(ParseError::Generic);
-        }
         // Proceed until we find the ending quote.
         let (i_end, is_escaping) =
-            char_indices.fold((None, false), |(i_end, is_escaping), (i, c)| {
-                match (i_end, c, is_escaping) {
+            self.view
+                .char_indices()
+                .fold((None, false), |(i_end, is_escaping), (i, c)| {
+                    match (i_end, c, is_escaping) {
                     #![rustfmt::skip]
                     // If we've already found the end, pass it on.
                     (Some(i),    _,           _) => (Some(i),        false),
@@ -147,10 +127,12 @@ impl<'a> Tokenizer<'a> {
                     // escaping and move on.
                                                _ => (   None,        false),
                 }
-            });
+                });
         match (i_end, is_escaping) {
             (Some(i), false) => {
                 let body = &self.view[..i];
+                println!("!!! BODY = {:?}", body);
+                // TODO Ensure that `i+1` is a UTF-8 boundary.
                 self.view = &self.view[i + 1..];
                 Ok(Token::String(body))
             }
@@ -176,145 +158,13 @@ impl<'a> Tokenizer<'a> {
 
 impl Token<'_> {
     pub fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
-        for token in Tokenizer::new(code) {
-            println!("TOKEN: {:?}", token);
-        }
-
-        let mut out = Vec::new();
-        let mut token_buf: &str = &code;
-        while token_buf.len() > 0 {
-            match Token::eat_token(&token_buf) {
-                Ok((token, tail)) => {
-                    out.push(token);
-                    token_buf = tail;
-                }
-                Err(ParseError::NoToken) => {
-                    assert!(token_buf.chars().all(|c| c.is_whitespace()));
-                    break;
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-        }
-        Ok(out)
-    }
-
-    /// Return the next token and the unlexed remainder of the given string.
-    ///
-    /// TODO: Refactor these methods into a `Tokenizer` struct that mutates a
-    /// single `&str`. I think this will simplify some of this logic where we
-    /// repeatedly figure out what the suffix should be.
-    fn eat_token(s: &str) -> Result<(Token, &str), ParseError> {
-        if s.len() == 0 {
-            return Err(ParseError::NoToken);
-        }
-        let mut chars = s.chars().peekable();
-        match chars.peek().ok_or(ParseError::Generic)? {
-            ' ' | '\t' | '\r' | '\n' => Token::eat_token(&s[1..]),
-            '-' | '0'..='9' => Token::eat_num_token(&s),
-            '"' => Token::eat_string_token(&s[1..]),
-            'A'..='Z' | 'a'..='z' | '_' => Token::eat_symbol_token(&s),
-            '(' => Ok((Token::LeftParen, &s[1..])),
-            ')' => Ok((Token::RightParen, &s[1..])),
-            '\'' => Ok((Token::SingleQuote, &s[1..])),
-            _ => Err(ParseError::Generic),
-        }
-    }
-
-    fn eat_num_token(s: &str) -> Result<(Token, &str), ParseError> {
-        assert_ne!(s.len(), 0);
-
-        let is_negative = s.chars().next().unwrap() == '-';
-        if let Some(c) = s.chars().skip(1).next() {
-            if c == '-' {
-                return Err(ParseError::ParseNum);
-            }
-        }
-
-        let mut chars = s.chars();
-        if is_negative {
-            chars.next();
-        }
-
-        let orig_len = chars.as_str().len();
-
-        let mut value: i32 = 0;
-        let mut suffix = s;
-        while let Some(c) = chars.next() {
-            match c {
-                '0'..='9' => {
-                    value = 10 * value + ((c as i32) - ('0' as i32));
-                    suffix = chars.as_str();
-                }
-                _ => break,
-            }
-        }
-
-        if chars.as_str().len() == orig_len {
-            Err(ParseError::ParseNum)
-        } else {
-            if is_negative {
-                value *= -1;
-            }
-            Ok((Token::Num(value), suffix))
-        }
-    }
-
-    /// Consume the remainder of a string literal, assuming the opening
-    /// quotation mark has already been consumed.
-    fn eat_string_token(s: &str) -> Result<(Token, &str), ParseError> {
-        let (i_end, _) = s
-            .char_indices()
-            .fold((None, false), |(i_end, is_escaping), (i, c)| {
-                match (i_end, c, is_escaping) {
-                    #![rustfmt::skip]
-                    // If we've already found the end, pass it on.
-                    (Some(i),    _,           _) => (Some(i),        false),
-                    // If we found a quotation mark, we may have found the end
-                    // of the string literal!
-                    (      _,  '"',       false) => (Some(i),        false),
-                    (      _,  '"',        true) => (   None,        false),
-                    // Backslashes are never the end of a string literal, but
-                    // they do affect escaping. If we were already escaping,
-                    // this is a true backlsash. Otherwise, escape the next
-                    // character.
-                    (      _, '\\', is_escaping) => (   None, !is_escaping),
-                    // Regular characters have no special semantics. Disable
-                    // escaping and move on.
-                                               _ => (   None,        false),
-                }
-            });
-        match i_end {
-            Some(i) => Ok((Token::String(&s[..i]), &s[i + 1..])),
-            _ => Err(ParseError::UnterminatedString),
-        }
-    }
-
-    fn eat_symbol_token(s: &str) -> Result<(Token, &str), ParseError> {
-        let len = s
-            .chars()
-            .take_while(|&c| c.is_alphanumeric() || c == '_')
-            .count();
-        Ok((Token::Symbol(&s[..len]), &s[len..]))
+        Tokenizer::new(&code).collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn simple_tokenizing() {
-        assert_eq!(Token::eat_token("123 )"), Ok((Token::Num(123), " )")));
-        assert_eq!(Token::eat_token("(foo)"), Ok((Token::LeftParen, "foo)")));
-        assert_eq!(Token::eat_token(" foo )"), Ok((Token::Symbol("foo"), " )")));
-        assert_eq!(Token::eat_token("foo )"), Ok((Token::Symbol("foo"), " )")));
-        assert_eq!(
-            Token::eat_token(" \"abc\")"),
-            Ok((Token::String("abc"), ")"))
-        );
-    }
 
     #[test]
     fn test_lex() {
