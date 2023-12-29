@@ -66,16 +66,17 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn next_num(&mut self) -> Result<Token<'a>, ParseError> {
-        assert_ne!(self.view.len(), 0);
-
-        // Consume the optional leading hyphen.
-        let is_negative = self.view.chars().next().unwrap() == '-';
+        // Consume the optional leading hyphen and determine whether the number
+        // is negative.
+        let mut chars = self.view.chars();
+        let is_negative = match (chars.next(), chars.next()) {
+            (None, _) => panic!("next_num expects one leading char"),
+            (Some('-'), Some('-')) => return Err(ParseError::ParseNum),
+            (Some('-'), _) => true,
+            _ => false,
+        };
         if is_negative {
             self.view = &self.view[1..];
-        }
-
-        if let Some('-') = self.view.chars().next() {
-            return Err(ParseError::ParseNum);
         }
 
         let orig_len = self.view.len();
