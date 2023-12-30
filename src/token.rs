@@ -266,4 +266,19 @@ mod tests {
             }
         });
     }
+
+    #[bench]
+    fn bench_num_tokenize(b: &mut Bencher) {
+        const MAX: u32 = 1000;
+        b.iter(|| {
+            for n in 0..MAX {
+                // TODO: Figure out how to exclude this setup code from the
+                // benchmark.
+                let big_num: String = (0..n)
+                    .map(|i: u32| char::from_u32(i % 10 + u32::from('0')).unwrap())
+                    .collect();
+                let _ = test::black_box(Token::lex(&big_num));
+            }
+        });
+    }
 }
