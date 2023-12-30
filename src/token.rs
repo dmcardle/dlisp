@@ -69,16 +69,17 @@ impl<'a> Tokenizer<'a> {
         // Determine whether the number is negative.
         let mut char_indices = self.view.char_indices();
         let is_negative = match (char_indices.next(), char_indices.next()) {
+            (None, _) => panic!("next_num expects one leading char"),
             (Some((_, '-')), Some((j, '0'..='9'))) => {
                 // Consume the hyphen.
                 self.view = &self.view[j..];
                 true
             }
-            (None, _) => panic!("next_num expects one leading char"),
             (Some((_, '-')), Some((_, '-'))) => return Err(ParseError::ParseNum),
             (Some((_, '-')), Some((_, _))) => return Err(ParseError::ParseNum),
             _ => false,
         };
+        // Parse a number composed of digits.
         let (i_end, value) = self
             .view
             .char_indices()
@@ -88,8 +89,11 @@ impl<'a> Tokenizer<'a> {
                 let value = 10 * v + digit;
                 (i, value)
             });
-
+        // After parsing the number, consume all of its constituent characters.
+        // Adding one to the index is safe because numeric characters are ASCII,
+        // and thus take up a single byte.
         self.view = &self.view[i_end + 1..];
+
         Ok(Token::Num(if is_negative { -value } else { value }))
     }
 
