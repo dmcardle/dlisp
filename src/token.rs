@@ -66,43 +66,31 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn next_num(&mut self) -> Result<Token<'a>, ParseError> {
-        // Consume the optional leading hyphen and determine whether the number
-        // is negative.
-        let mut chars = self.view.chars();
-        let is_negative = match (chars.next(), chars.next()) {
+        // Determine whether the number is negative.
+        let mut char_indices = self.view.char_indices();
+        let is_negative = match (char_indices.next(), char_indices.next()) {
+            (Some((_, '-')), Some((j, '0'..='9'))) => {
+                // Consume the hyphen.
+                self.view = &self.view[j..];
+                true
+            }
             (None, _) => panic!("next_num expects one leading char"),
-            (Some('-'), Some('-')) => return Err(ParseError::ParseNum),
-            (Some('-'), _) => true,
+            (Some((_, '-')), Some((_, '-'))) => return Err(ParseError::ParseNum),
+            (Some((_, '-')), Some((_, _))) => return Err(ParseError::ParseNum),
             _ => false,
         };
-        if is_negative {
-            self.view = &self.view[1..];
-        }
+        let (i_end, value) = self
+            .view
+            .char_indices()
+            .take_while(|(_, c)| c.is_numeric())
+            .fold((0, 0), |(_, v), (i, c)| {
+                let digit: i32 = (c as i32) - ('0' as i32);
+                let value = 10 * v + digit;
+                (i, value)
+            });
 
-        let orig_len = self.view.len();
-
-        let mut value: i32 = 0;
-        let mut suffix = self.view;
-        let mut chars = suffix.chars();
-        while let Some(c) = chars.next() {
-            match c {
-                '0'..='9' => {
-                    value = 10 * value + ((c as i32) - ('0' as i32));
-                    suffix = chars.as_str();
-                }
-                _ => break,
-            }
-        }
-
-        if chars.as_str().len() == orig_len {
-            Err(ParseError::ParseNum)
-        } else {
-            if is_negative {
-                value *= -1;
-            }
-            self.view = suffix;
-            Ok(Token::Num(value))
-        }
+        self.view = &self.view[i_end + 1..];
+        Ok(Token::Num(if is_negative { -value } else { value }))
     }
 
     fn next_string(&mut self) -> Result<Token<'a>, ParseError> {
