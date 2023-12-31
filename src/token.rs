@@ -84,11 +84,13 @@ impl<'a> Tokenizer<'a> {
             .view
             .char_indices()
             .take_while(|(_, c)| c.is_numeric())
-            .fold((0, 0), |(_, v), (i, c)| {
+            .fold(Some((0usize, 0i32)), |acc, (i, c)| {
                 let digit: i32 = (c as i32) - ('0' as i32);
-                let value = 10 * v + digit;
-                (i, value)
-            });
+                let (_, value) = acc?;
+                let value = value.checked_mul(10)?.checked_add(digit)?;
+                Some((i, value))
+            })
+            .ok_or(ParseError::ParseNum)?;
         // After parsing the number, consume all of its constituent characters.
         // Adding one to the index is safe because numeric characters are ASCII,
         // and thus take up a single byte.
@@ -215,6 +217,18 @@ mod tests {
             Token::lex("0x123"),
             Ok(vec![Token::Num(0), Token::Symbol("x123")])
         );
+    }
+
+    #[test]
+    fn test_tokenize_num_too_big() {
+        let big_num_literal = format!("{}", i32::MAX as i64 + 1);
+        assert_eq!(Token::lex(&big_num_literal), Err(ParseError::ParseNum));
+    }
+
+    #[test]
+    fn test_tokenize_num_too_small() {
+        let small_num_literal = format!("{}", i32::MIN as i64 - 1);
+        assert_eq!(Token::lex(&small_num_literal), Err(ParseError::ParseNum));
     }
 
     #[test]
