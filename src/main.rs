@@ -10,9 +10,8 @@ use std::io::Write;
 
 use eval::eval;
 use expr::Expr;
-use token::Token;
 
-fn main() {
+fn main() -> Result<(), String> {
     loop {
         print!(">>> ");
         if std::io::stdout().flush().is_err() {
@@ -22,31 +21,18 @@ fn main() {
         let mut buffer = String::new();
         if std::io::stdin().read_line(&mut buffer).is_err() {
             println!("Failed to read from stdin");
-            return;
+            return Ok(());
         }
 
-        match Token::lex(&buffer).as_deref() {
-            // If there's a single token, we may want to interpret it as a REPL
-            // command.
-            Ok([Token::Symbol("quit")]) => {
-                return;
-            }
-            Ok(tokens) => {
-                let expr = Expr::parse(&tokens);
-                if let Ok(expr) = expr {
-                    match eval(expr) {
-                        Ok(value) => {
-                            println!("{}", value);
-                        }
-                        Err(e) => {
-                            println!("ERROR {}", e);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                println!("Error while tokenizing: {}", e);
-            }
-        }
+        // Peek at the first token from stdin.
+        let first_token = token::Tokenizer::new(&buffer).next();
+        match first_token {
+            Some(Ok(token::Token::Symbol("quit"))) => return Ok(()),
+            _ => {}
+        };
+
+        // Evaluate and print the string from stdin.
+        let expr_result: Expr = eval(&buffer).map_err(|e| format!("{}", e))?;
+        println!("{}", expr_result);
     }
 }

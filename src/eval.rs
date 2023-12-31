@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
-use crate::expr::Expr;
+use crate::{expr::Expr, token};
 
 #[derive(Debug)]
 pub enum RuntimeError {
+    ParseError(token::ParseError),
     Uncallable,
     Unprintable,
     Unaddable,
@@ -14,6 +15,7 @@ pub enum RuntimeError {
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            RuntimeError::ParseError(e) => write!(f, "ParseError {}", e),
             RuntimeError::Uncallable => write!(f, "Uncallable"),
             RuntimeError::Unprintable => write!(f, "Unprintable"),
             RuntimeError::Unaddable => write!(f, "Unaddable"),
@@ -25,7 +27,12 @@ impl Display for RuntimeError {
     }
 }
 
-pub fn eval(expr: Expr) -> Result<Expr, RuntimeError> {
+pub fn eval(code: &str) -> Result<Expr, RuntimeError> {
+    let expr = Expr::parse_str(&code).map_err(|e| RuntimeError::ParseError(e))?;
+    eval_expr(expr)
+}
+
+pub fn eval_expr(expr: Expr) -> Result<Expr, RuntimeError> {
     match expr {
         Expr::Int(_) => Ok(expr),
         Expr::String(_) => Ok(expr),
@@ -58,16 +65,16 @@ fn builtin_cond(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
     let e1 = args.pop().unwrap();
     let selector = args.pop().unwrap();
 
-    match eval(selector)? {
-        Expr::Int(0) => eval(e2),
-        _ => eval(e1),
+    match eval_expr(selector)? {
+        Expr::Int(0) => eval_expr(e2),
+        _ => eval_expr(e1),
     }
 }
 
 fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
     let mut pieces = Vec::new();
     for arg in args {
-        match eval(arg)? {
+        match eval_expr(arg)? {
             Expr::Int(n) => {
                 pieces.push(format!("{}", n));
             }
@@ -93,7 +100,7 @@ fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
 fn builtin_add(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
     let mut sum = 0;
     for arg in args {
-        match eval(arg)? {
+        match eval_expr(arg)? {
             Expr::Int(n) => {
                 sum += n;
             }
@@ -112,41 +119,41 @@ mod tests {
     #[test]
     fn test_cond() {
         let expr = Expr::parse_str("(cond 0 \"truth\" \"lies\")").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse_str("(cond 1 \"truth\" \"lies\")").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse_str("(cond 2 \"truth\" \"lies\")").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse_str("(cond \"x\" \"truth\" \"lies\")").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_selector() {
         let expr = Expr::parse_str("(cond (add 0 0) \"truth\" \"lies\")").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse_str("(cond (add 1 0) \"truth\" \"lies\")").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_result() {
         let expr = Expr::parse_str("(cond 1 (cond 0 \"a\" \"b\") \"c\")").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
 
         let expr = Expr::parse_str("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
-        let expr = eval(expr).unwrap();
+        let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
     }
 }

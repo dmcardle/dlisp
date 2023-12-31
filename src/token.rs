@@ -32,7 +32,7 @@ pub enum Token<'a> {
 /// The purpose of [Tokenizer] is to iterate [Token] values from the given
 /// string. Technically, it yields [Result<Token, ParseError>] values, which can
 /// be collected into a [Result<Vec<Token>, ParseError>].
-struct Tokenizer<'a> {
+pub struct Tokenizer<'a> {
     view: &'a str,
 }
 
@@ -61,7 +61,7 @@ impl<'a> Iterator for Tokenizer<'a> {
 }
 
 impl<'a> Tokenizer<'a> {
-    fn new(s: &str) -> Tokenizer {
+    pub fn new(s: &str) -> Tokenizer {
         Tokenizer { view: &s }
     }
 
@@ -126,7 +126,6 @@ impl<'a> Tokenizer<'a> {
         match (i_end, is_escaping) {
             (Some(i), false) => {
                 let body = &self.view[..i];
-                println!("!!! BODY = {:?}", body);
                 // TODO Ensure that `i+1` is a UTF-8 boundary.
                 self.view = &self.view[i + 1..];
                 Ok(Token::String(body))
