@@ -3,7 +3,7 @@ use crate::token::Token;
 
 use std::fmt::Display;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Int(i32),
     String(String),
@@ -69,10 +69,18 @@ impl Expr {
             arg_tokens = tail;
         }
         match arg_tokens {
-            [Token::RightParen, tail @ ..] => {
-                let application = Expr::Application(Box::new(left), right);
-                Ok((application, tail))
-            }
+            [Token::RightParen, tail @ ..] => match left {
+                // When we parse a quoted expression, return `Expr::Quoted`
+                // rather than `Expr::Application`.
+                Expr::Symbol(symbol) if symbol == "quote" => {
+                    let quoted = Expr::Quoted(right);
+                    Ok((quoted, tail))
+                }
+                _ => {
+                    let application = Expr::Application(Box::new(left), right);
+                    Ok((application, tail))
+                }
+            },
             _ => Err(ParseError::Generic),
         }
     }
@@ -141,6 +149,17 @@ mod tests {
                 Box::new(Expr::Symbol(String::from("print"))),
                 vec![Expr::Int(123), Expr::String(String::from("abc")),]
             ))
+        );
+    }
+
+    #[test]
+    fn test_parse_quote() {
+        assert_eq!(
+            Expr::parse_str("(quote 123 \"abc\")"),
+            Ok(Expr::Quoted(vec![
+                Expr::Int(123),
+                Expr::String(String::from("abc"))
+            ]))
         );
     }
 }

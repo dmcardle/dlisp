@@ -1,6 +1,7 @@
 #![feature(custom_inner_attributes)]
 #![feature(stmt_expr_attributes)]
 #![feature(test)]
+#![feature(assert_matches)]
 
 mod eval;
 mod expr;

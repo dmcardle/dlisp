@@ -8,7 +8,9 @@ pub enum RuntimeError {
     Uncallable,
     Unprintable,
     Unaddable,
+    CarEmpty,
     UnknownFunction(String),
+    WrongType { want: &'static str, got: Expr },
     WrongNumArgs { want: usize, got: usize },
 }
 
@@ -19,7 +21,11 @@ impl Display for RuntimeError {
             RuntimeError::Uncallable => write!(f, "Uncallable"),
             RuntimeError::Unprintable => write!(f, "Unprintable"),
             RuntimeError::Unaddable => write!(f, "Unaddable"),
+            RuntimeError::CarEmpty => write!(f, "Car called on empty"),
             RuntimeError::UnknownFunction(s) => write!(f, "Unknown function {}", s),
+            RuntimeError::WrongType { want, got } => {
+                write!(f, "Wanted a value of type {}, but got {}", want, got)
+            }
             RuntimeError::WrongNumArgs { want, got } => {
                 write!(f, "Wanted {} args, but got {}", want, got)
             }
@@ -44,6 +50,7 @@ pub fn eval_expr(expr: Expr) -> Result<Expr, RuntimeError> {
                 "cond" => builtin_cond(args),
                 "print" => builtin_print(args),
                 "add" => builtin_add(args),
+                "car" => builtin_car(&args),
                 _ => Err(RuntimeError::UnknownFunction(func_name)),
             },
             _ => Err(RuntimeError::Uncallable),
@@ -112,9 +119,27 @@ fn builtin_add(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
     Ok(Expr::Int(sum))
 }
 
+fn builtin_car(args: &[Expr]) -> Result<Expr, RuntimeError> {
+    match args {
+        [Expr::Quoted(expr)] => match expr.first() {
+            Some(head) => Ok(head.clone()),
+            _ => Err(RuntimeError::CarEmpty),
+        },
+        [e] => Err(RuntimeError::WrongType {
+            want: "Quoted",
+            got: e.clone(),
+        }),
+        _ => Err(RuntimeError::WrongNumArgs {
+            want: 1,
+            got: args.len(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches::assert_matches;
 
     #[test]
     fn test_cond() {
@@ -155,5 +180,17 @@ mod tests {
         let expr = Expr::parse_str("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
         let expr = eval_expr(expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
+    }
+
+    #[test]
+    fn test_car_empty() {
+        let expr = Expr::parse_str("(car (quote))").unwrap();
+        assert_matches!(eval_expr(expr), Err(RuntimeError::CarEmpty));
+    }
+
+    #[test]
+    fn test_car_simple() {
+        let expr = Expr::parse_str("(car (quote 1 2 3))").unwrap();
+        assert_matches!(eval_expr(expr), Ok(Expr::Int(1)));
     }
 }
