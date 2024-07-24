@@ -5,6 +5,8 @@ use std::fmt::Display;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
+    False,
+    True,
     Int(i32),
     String(String),
     Symbol(String),
@@ -15,9 +17,11 @@ pub enum Expr {
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Expr::False => write!(f, "false"),
+            Expr::True => write!(f, "true"),
             Expr::Int(n) => write!(f, "{}", n),
             Expr::String(s) => write!(f, "\"{}\"", s),
-            Expr::Symbol(s) => write!(f, "'{}", s),
+            Expr::Symbol(s) => write!(f, "{}", s),
             Expr::Application(e, args) => {
                 let args_repr = String::from_iter(args.iter().map(|a| format!(" {}", a)));
                 write!(f, "({}{})", e, &args_repr)
@@ -38,8 +42,8 @@ impl Expr {
     }
 
     pub fn parse(tokens: &[Token]) -> Result<Expr, ParseError> {
-        let (expr, tail) = Self::parse_expr(&tokens)?;
-        if tail.len() > 0 {
+        let (expr, tail) = Self::parse_expr(tokens)?;
+        if !tail.is_empty() {
             println!("UNPARSED TAIL: {:?}", tail);
         }
         Ok(expr)
@@ -49,6 +53,8 @@ impl Expr {
         match tokens {
             [Token::Num(n), tail @ ..] => Ok((Expr::Int(*n), tail)),
             [Token::String(s), tail @ ..] => Ok((Expr::String(String::from(*s)), tail)),
+            [Token::Symbol("false"), tail @ ..] => Ok((Expr::False, tail)),
+            [Token::Symbol("true"), tail @ ..] => Ok((Expr::True, tail)),
             [Token::Symbol(s), tail @ ..] => Ok((Expr::Symbol(String::from(*s)), tail)),
             [Token::LeftParen, tail @ ..] => Self::parse_application(tail),
             [Token::RightParen, ..] => Err(ParseError::Generic),
@@ -108,8 +114,8 @@ mod tests {
     #[test]
     fn test_display_expr_symbol() {
         // TODO Disallow the empty symbol.
-        assert_eq!(format!("{}", Expr::Symbol("".to_string())), "'");
-        assert_eq!(format!("{}", Expr::Symbol("foo".to_string())), "'foo");
+        assert_eq!(format!("{}", Expr::Symbol("".to_string())), "");
+        assert_eq!(format!("{}", Expr::Symbol("foo".to_string())), "foo");
     }
 
     #[test]
@@ -122,7 +128,7 @@ mod tests {
                     vec![Expr::Int(1), Expr::Int(2)]
                 )
             ),
-            "('add 1 2)"
+            "(add 1 2)"
         );
     }
 
@@ -137,7 +143,7 @@ mod tests {
                     Expr::Int(2)
                 ])
             ),
-            "(quote 'f 1 2)"
+            "(quote f 1 2)"
         );
     }
 

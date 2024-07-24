@@ -6,7 +6,6 @@ use crate::{expr::Expr, token};
 pub enum RuntimeError {
     ParseError(token::ParseError),
     Uncallable,
-    Unprintable,
     Unaddable,
     CarEmpty,
     UnknownFunction(String),
@@ -19,7 +18,6 @@ impl Display for RuntimeError {
         match self {
             RuntimeError::ParseError(e) => write!(f, "ParseError {}", e),
             RuntimeError::Uncallable => write!(f, "Uncallable"),
-            RuntimeError::Unprintable => write!(f, "Unprintable"),
             RuntimeError::Unaddable => write!(f, "Unaddable"),
             RuntimeError::CarEmpty => write!(f, "Car called on empty"),
             RuntimeError::UnknownFunction(s) => write!(f, "Unknown function {}", s),
@@ -34,80 +32,70 @@ impl Display for RuntimeError {
 }
 
 pub fn eval(code: &str) -> Result<Expr, RuntimeError> {
-    let expr = Expr::parse_str(&code).map_err(|e| RuntimeError::ParseError(e))?;
-    eval_expr(expr)
+    let expr = Expr::parse_str(code).map_err(RuntimeError::ParseError)?;
+    eval_expr(&expr)
 }
 
-pub fn eval_expr(expr: Expr) -> Result<Expr, RuntimeError> {
+pub fn eval_expr(expr: &Expr) -> Result<Expr, RuntimeError> {
     match expr {
-        Expr::Int(_) => Ok(expr),
-        Expr::String(_) => Ok(expr),
-        Expr::Symbol(_) => Ok(expr),
-        Expr::Quoted(_) => Ok(expr),
-        Expr::Application(boxed_expr, args) => match *boxed_expr {
+        Expr::False
+        | Expr::True
+        | Expr::Int(_)
+        | Expr::String(_)
+        | Expr::Symbol(_)
+        | Expr::Quoted(_) => Ok(expr.clone()),
+        Expr::Application(boxed_expr, args) => match boxed_expr.as_ref() {
             Expr::Symbol(func_name) => match func_name.as_str() {
-                "quote" => Ok(Expr::Quoted(args)),
-                "cond" => builtin_cond(args),
-                "print" => builtin_print(args),
-                "add" => builtin_add(args),
+                "quote" => Ok(Expr::Quoted(args.clone())),
+                "cond" => builtin_cond(&args),
+                "print" => builtin_print(&args),
+                "show" => builtin_show(&args),
+                "add" => builtin_add(&args),
                 "car" => builtin_car(&args),
-                _ => Err(RuntimeError::UnknownFunction(func_name)),
+                "cons" => builtin_cons(&args),
+                _ => Err(RuntimeError::UnknownFunction(func_name.to_string())),
             },
             _ => Err(RuntimeError::Uncallable),
         },
     }
 }
 
-fn builtin_cond(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
-    const NUM_ARGS: usize = 3;
-    if args.len() != NUM_ARGS {
-        return Err(RuntimeError::WrongNumArgs {
-            want: NUM_ARGS,
-            got: args.len(),
-        });
-    }
-
-    let mut args = args;
-    let e2 = args.pop().unwrap();
-    let e1 = args.pop().unwrap();
-    let selector = args.pop().unwrap();
-
-    match eval_expr(selector)? {
-        Expr::Int(0) => eval_expr(e2),
-        _ => eval_expr(e1),
-    }
-}
-
-fn builtin_print(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
-    let mut pieces = Vec::new();
-    for arg in args {
-        match eval_expr(arg)? {
-            Expr::Int(n) => {
-                pieces.push(format!("{}", n));
-            }
-            Expr::String(s) => {
-                pieces.push(format!("{}", s));
-            }
-            Expr::Symbol(s) => {
-                pieces.push(format!("{}", s));
-            }
-            Expr::Quoted(expr) => {
-                pieces.push(format!("{:?}", expr));
-            }
-            Expr::Application(_, _) => {
-                return Err(RuntimeError::Unprintable);
+fn builtin_cond(args: &[Expr]) -> Result<Expr, RuntimeError> {
+    match args {
+        [selector, e1, e2] => {
+            // Evaluate the selector to decide which sub-expression to evaluate.
+            match eval_expr(selector)? {
+                Expr::False | Expr::Int(0) => eval_expr(e2),
+                _ => eval_expr(e1),
             }
         }
+        _ => Err(RuntimeError::WrongNumArgs {
+            want: 3,
+            got: args.len(),
+        }),
     }
-    let joined = pieces.join(" ");
-    println!("{}", joined);
-    Ok(Expr::String(joined))
 }
 
-fn builtin_add(args: Vec<Expr>) -> Result<Expr, RuntimeError> {
+fn builtin_show(args: &[Expr]) -> Result<Expr, RuntimeError> {
+    let exprs: Vec<Expr> = args.iter().map(eval_expr).try_collect()?;
+    let expr_strings: Vec<String> = exprs.iter().map(Expr::to_string).collect();
+    Ok(Expr::String(expr_strings.join(" ")))
+}
+
+fn builtin_print(args: &[Expr]) -> Result<Expr, RuntimeError> {
+    for arg in args {
+        match eval_expr(arg) {
+            Ok(expr) => println!("{}", expr),
+            Err(err) => println!("@ {}", err),
+        }
+    }
+    Ok(Expr::True)
+}
+
+fn builtin_add(args: &[Expr]) -> Result<Expr, RuntimeError> {
     let mut sum = 0;
     for arg in args {
-        match eval_expr(arg)? {
+        match eval_expr(&arg)? {
             Expr::Int(n) => {
                 sum += n;
             }
@@ -125,15 +113,26 @@ fn builtin_car(args: &[Expr]) -> Result<Expr, RuntimeError> {
             Some(head) => Ok(head.clone()),
             _ => Err(RuntimeError::CarEmpty),
         },
-        [e] => Err(RuntimeError::WrongType {
-            want: "Quoted",
-            got: e.clone(),
-        }),
+        [e] => match eval_expr(&e) {
+            Ok(quoted @ Expr::Quoted(_)) => {
+                let args = [quoted.clone()];
+                builtin_car(&args)
+            }
+            Ok(e2) => Err(RuntimeError::WrongType {
+                want: "Quoted",
+                got: e2.clone(),
+            }),
+            err @ Err(_) => err,
+        },
         _ => Err(RuntimeError::WrongNumArgs {
             want: 1,
             got: args.len(),
         }),
     }
+}
+
+fn builtin_cons(args: &[Expr]) -> Result<Expr, RuntimeError> {
+    todo!()
 }
 
 #[cfg(test)]
@@ -144,53 +143,82 @@ mod tests {
     #[test]
     fn test_cond() {
         let expr = Expr::parse_str("(cond 0 \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse_str("(cond 1 \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse_str("(cond 2 \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse_str("(cond \"x\" \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_selector() {
         let expr = Expr::parse_str("(cond (add 0 0) \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse_str("(cond (add 1 0) \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_result() {
         let expr = Expr::parse_str("(cond 1 (cond 0 \"a\" \"b\") \"c\")").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
 
         let expr = Expr::parse_str("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
-        let expr = eval_expr(expr).unwrap();
+        let expr = eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
     }
 
     #[test]
     fn test_car_empty() {
         let expr = Expr::parse_str("(car (quote))").unwrap();
-        assert_matches!(eval_expr(expr), Err(RuntimeError::CarEmpty));
+        assert_matches!(eval_expr(&expr), Err(RuntimeError::CarEmpty));
     }
 
     #[test]
     fn test_car_simple() {
         let expr = Expr::parse_str("(car (quote 1 2 3))").unwrap();
-        assert_matches!(eval_expr(expr), Ok(Expr::Int(1)));
+        assert_matches!(eval_expr(&expr), Ok(Expr::Int(1)));
+    }
+
+    /// Test that `car` evaluates its argument rather than assuming it's already
+    /// a quoted expression.
+    #[test]
+    fn test_car_eval_args() {
+        let expr = Expr::parse_str("(car (cond 0 (quote) (quote 1 2)))").unwrap();
+        assert_matches!(eval_expr(&expr), Ok(Expr::Int(1)));
+    }
+
+    #[test]
+    fn test_car_eval_args_two_levels() {
+        let expr = Expr::parse_str("(car (cond 0 (quote) (cond 0 (quote) (quote 1 2))))").unwrap();
+        assert_matches!(eval_expr(&expr), Ok(Expr::Int(1)));
+    }
+
+    #[test]
+    fn test_car_eval_args_empty() {
+        let expr = Expr::parse_str("(car (cond 1 (quote) (quote 1 2)))").unwrap();
+        assert_matches!(eval_expr(&expr), Err(RuntimeError::CarEmpty));
+    }
+
+    #[test]
+    fn test_car_eval_args_wrong_type() {
+        let expr = Expr::parse_str("(car (cond 1 42 (quote 1 2)))").unwrap();
+        assert_matches!(
+            eval_expr(&expr),
+            Err(RuntimeError::WrongType { want: _, got: _ })
+        );
     }
 }

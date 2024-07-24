@@ -2,6 +2,7 @@
 #![feature(stmt_expr_attributes)]
 #![feature(test)]
 #![feature(assert_matches)]
+#![feature(iterator_try_collect)]
 
 mod eval;
 mod expr;
@@ -10,7 +11,6 @@ mod token;
 use std::io::Write;
 
 use eval::eval;
-use expr::Expr;
 
 fn main() -> Result<(), String> {
     loop {
@@ -33,7 +33,10 @@ fn main() -> Result<(), String> {
         };
 
         // Evaluate and print the string from stdin.
-        let expr_result: Expr = eval(&buffer).map_err(|e| format!("{}", e))?;
-        println!("{}", expr_result);
+        let expr_result = eval(&buffer).map_err(|e| format!("{}", e));
+        match expr_result {
+            Ok(expr) => println!("{}", expr),
+            Err(err) => println!("! {}", err),
+        }
     }
 }
