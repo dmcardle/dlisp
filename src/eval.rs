@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 
 use crate::{expr::Expr, token};
@@ -7,10 +8,19 @@ pub enum RuntimeError {
     ParseError(token::ParseError),
     Uncallable,
     Unaddable,
+    UndefinedSymbol,
     CarEmpty,
     UnknownFunction(String),
-    WrongType { want: &'static str, got: Expr },
-    WrongNumArgs { want: usize, got: usize },
+    WrongType {
+        func: &'static str,
+        want: &'static str,
+        got: Expr,
+    },
+    WrongNumArgs {
+        func: &'static str,
+        want: usize,
+        got: usize,
+    },
 }
 
 impl Display for RuntimeError {
@@ -19,120 +29,182 @@ impl Display for RuntimeError {
             RuntimeError::ParseError(e) => write!(f, "ParseError {}", e),
             RuntimeError::Uncallable => write!(f, "Uncallable"),
             RuntimeError::Unaddable => write!(f, "Unaddable"),
+            RuntimeError::UndefinedSymbol => write!(f, "Undefined symbol"),
             RuntimeError::CarEmpty => write!(f, "Car called on empty"),
             RuntimeError::UnknownFunction(s) => write!(f, "Unknown function {}", s),
-            RuntimeError::WrongType { want, got } => {
-                write!(f, "Wanted a value of type {}, but got {}", want, got)
+            RuntimeError::WrongType { func, want, got } => {
+                write!(f, "{func} wanted a value of type {want}, but got {got}")
             }
-            RuntimeError::WrongNumArgs { want, got } => {
-                write!(f, "Wanted {} args, but got {}", want, got)
+            RuntimeError::WrongNumArgs { func, want, got } => {
+                write!(f, "{func} wanted {want} args, but got {got}")
             }
         }
     }
 }
 
-pub fn eval(code: &str) -> Result<Expr, RuntimeError> {
-    let expr = Expr::parse_str(code).map_err(RuntimeError::ParseError)?;
-    eval_expr(&expr)
+pub struct Evaluator {
+    pub env: HashMap<String, Expr>,
 }
 
-pub fn eval_expr(expr: &Expr) -> Result<Expr, RuntimeError> {
-    match expr {
-        Expr::False
-        | Expr::True
-        | Expr::Int(_)
-        | Expr::String(_)
-        | Expr::Symbol(_)
-        | Expr::Quoted(_) => Ok(expr.clone()),
-        Expr::Application(boxed_expr, args) => match boxed_expr.as_ref() {
-            Expr::Symbol(func_name) => match func_name.as_str() {
-                "quote" => Ok(Expr::Quoted(args.clone())),
-                "cond" => builtin_cond(&args),
-                "print" => builtin_print(&args),
-                "show" => builtin_show(&args),
-                "add" => builtin_add(&args),
-                "car" => builtin_car(&args),
-                "cons" => builtin_cons(&args),
-                _ => Err(RuntimeError::UnknownFunction(func_name.to_string())),
+impl Evaluator {
+    pub fn new() -> Evaluator {
+        Evaluator {
+            env: HashMap::new(),
+        }
+    }
+    pub fn eval(&mut self, code: &str) -> Result<Expr, RuntimeError> {
+        let expr = Expr::parse_str(code).map_err(RuntimeError::ParseError)?;
+        self.eval_expr(&expr)
+    }
+
+    pub fn eval_expr(&mut self, expr: &Expr) -> Result<Expr, RuntimeError> {
+        match expr {
+            Expr::Nil | Expr::True | Expr::Int(_) | Expr::String(_) | Expr::Quoted(_) => {
+                Ok(expr.clone())
+            }
+            Expr::Symbol(symbol) => {
+                if let Some(value) = self.env.get(symbol) {
+                    Ok(value.clone())
+                } else {
+                    Err(RuntimeError::UndefinedSymbol)
+                }
+            }
+            Expr::Application(boxed_expr, args) => match boxed_expr.as_ref() {
+                Expr::Symbol(func_name) => match func_name.as_str() {
+                    "quote" => Ok(Expr::Quoted(args.clone())),
+                    "cond" => self.builtin_cond(&args),
+                    "print" => self.builtin_print(&args),
+                    "show" => self.builtin_show(&args),
+                    "add" => self.builtin_add(&args),
+                    "car" => self.builtin_car(&args),
+                    "cons" => self.builtin_cons(&args),
+                    _ => Err(RuntimeError::UnknownFunction(func_name.to_string())),
+                },
+                _ => Err(RuntimeError::Uncallable),
             },
-            _ => Err(RuntimeError::Uncallable),
-        },
-    }
-}
-
-fn builtin_cond(args: &[Expr]) -> Result<Expr, RuntimeError> {
-    match args {
-        [selector, e1, e2] => {
-            // Evaluate the selector to decide which sub-expression to evaluate.
-            match eval_expr(selector)? {
-                Expr::False | Expr::Int(0) => eval_expr(e2),
-                _ => eval_expr(e1),
-            }
-        }
-        _ => Err(RuntimeError::WrongNumArgs {
-            want: 3,
-            got: args.len(),
-        }),
-    }
-}
-
-fn builtin_show(args: &[Expr]) -> Result<Expr, RuntimeError> {
-    let exprs: Vec<Expr> = args.iter().map(eval_expr).try_collect()?;
-    let expr_strings: Vec<String> = exprs.iter().map(Expr::to_string).collect();
-    Ok(Expr::String(expr_strings.join(" ")))
-}
-
-fn builtin_print(args: &[Expr]) -> Result<Expr, RuntimeError> {
-    for arg in args {
-        match eval_expr(arg) {
-            Ok(expr) => println!("{}", expr),
-            Err(err) => println!("@ {}", err),
-        }
-    }
-    Ok(Expr::True)
-}
-
-fn builtin_add(args: &[Expr]) -> Result<Expr, RuntimeError> {
-    let mut sum = 0;
-    for arg in args {
-        match eval_expr(&arg)? {
-            Expr::Int(n) => {
-                sum += n;
-            }
-            _ => {
-                return Err(RuntimeError::Unaddable);
+            Expr::Def(name, expr) => {
+                if let Expr::Nil = expr.as_ref() {
+                    self.env.remove(name);
+                } else {
+                    let expr = self.eval_expr(expr)?;
+                    self.env.insert(name.to_string(), expr);
+                }
+                Ok(Expr::Nil)
             }
         }
     }
-    Ok(Expr::Int(sum))
-}
 
-fn builtin_car(args: &[Expr]) -> Result<Expr, RuntimeError> {
-    match args {
-        [Expr::Quoted(expr)] => match expr.first() {
-            Some(head) => Ok(head.clone()),
-            _ => Err(RuntimeError::CarEmpty),
-        },
-        [e] => match eval_expr(&e) {
-            Ok(quoted @ Expr::Quoted(_)) => {
-                let args = [quoted.clone()];
-                builtin_car(&args)
+    fn builtin_cond(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        match args {
+            [selector, e1, e2] => {
+                // Evaluate the selector to decide which sub-expression to evaluate.
+                match self.eval_expr(selector)? {
+                    Expr::Nil | Expr::Int(0) => self.eval_expr(e2),
+                    _ => self.eval_expr(e1),
+                }
             }
-            Ok(e2) => Err(RuntimeError::WrongType {
-                want: "Quoted",
-                got: e2.clone(),
+            _ => Err(RuntimeError::WrongNumArgs {
+                func: "cond",
+                want: 3,
+                got: args.len(),
             }),
-            err @ Err(_) => err,
-        },
-        _ => Err(RuntimeError::WrongNumArgs {
-            want: 1,
-            got: args.len(),
-        }),
+        }
     }
-}
 
-fn builtin_cons(args: &[Expr]) -> Result<Expr, RuntimeError> {
-    todo!()
+    fn builtin_show(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        let exprs: Vec<Expr> = args.iter().map(|e| self.eval_expr(e)).try_collect()?;
+        let expr_strings: Vec<String> = exprs.iter().map(Expr::to_string).collect();
+        Ok(Expr::String(expr_strings.join(" ")))
+    }
+
+    fn builtin_print(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        for arg in args.iter() {
+            let expr = self.eval_expr(arg)?;
+            match expr {
+                Expr::String(s) => {
+                    println!("{}", s);
+                }
+                _ => {
+                    return Err(RuntimeError::WrongType {
+                        func: "print",
+                        want: "String",
+                        got: arg.clone(),
+                    })
+                }
+            }
+        }
+        Ok(Expr::Nil)
+    }
+
+    fn builtin_add(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        let mut sum = 0;
+        for arg in args {
+            match self.eval_expr(&arg)? {
+                Expr::Int(n) => {
+                    sum += n;
+                }
+                _ => {
+                    return Err(RuntimeError::Unaddable);
+                }
+            }
+        }
+        Ok(Expr::Int(sum))
+    }
+
+    fn builtin_car(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        match args {
+            [Expr::Quoted(expr)] => match expr.first() {
+                Some(head) => Ok(head.clone()),
+                _ => Err(RuntimeError::CarEmpty),
+            },
+            [e] => match self.eval_expr(&e) {
+                Ok(quoted @ Expr::Quoted(_)) => {
+                    let args = [quoted.clone()];
+                    self.builtin_car(&args)
+                }
+                Ok(e2) => Err(RuntimeError::WrongType {
+                    func: "car",
+                    want: "Quoted",
+                    got: e2.clone(),
+                }),
+                err @ Err(_) => err,
+            },
+            _ => Err(RuntimeError::WrongNumArgs {
+                func: "car",
+                want: 1,
+                got: args.len(),
+            }),
+        }
+    }
+
+    fn builtin_cons(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        match args {
+            [left, right] => {
+                let left = self.eval_expr(left)?;
+                let right = self.eval_expr(right)?;
+
+                match right {
+                    Expr::Quoted(items) => Ok(Expr::Quoted(
+                        std::iter::once(&left)
+                            .chain(items.iter())
+                            .cloned()
+                            .collect(),
+                    )),
+                    Expr::Nil => Ok(Expr::Quoted(vec![left])),
+                    _ => Err(RuntimeError::WrongType {
+                        func: "cons",
+                        want: "Quoted",
+                        got: right.clone(),
+                    }),
+                }
+            }
+            _ => Err(RuntimeError::WrongNumArgs {
+                func: "cons",
+                want: 2,
+                got: args.len(),
+            }),
+        }
+    }
 }
 
 #[cfg(test)]

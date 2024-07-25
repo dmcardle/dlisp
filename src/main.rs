@@ -10,11 +10,13 @@ mod token;
 
 use std::io::Write;
 
-use eval::eval;
+use eval::Evaluator;
+use expr::Expr;
 
 fn main() -> Result<(), String> {
+    let mut evaluator = Evaluator::new();
     loop {
-        print!(">>> ");
+        print!("::: ");
         if std::io::stdout().flush().is_err() {
             println!("Failed to flush stdout");
         }
@@ -25,6 +27,10 @@ fn main() -> Result<(), String> {
             return Ok(());
         }
 
+        if buffer == "\n" {
+            continue;
+        }
+
         // Peek at the first token from stdin.
         let first_token = token::Tokenizer::new(&buffer).next();
         match first_token {
@@ -33,8 +39,9 @@ fn main() -> Result<(), String> {
         };
 
         // Evaluate and print the string from stdin.
-        let expr_result = eval(&buffer).map_err(|e| format!("{}", e));
+        let expr_result = evaluator.eval(&buffer).map_err(|e| format!("{}", e));
         match expr_result {
+            Ok(Expr::Nil) => {}
             Ok(expr) => println!("{}", expr),
             Err(err) => println!("! {}", err),
         }

@@ -5,19 +5,20 @@ use std::fmt::Display;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
-    False,
+    Nil,
     True,
     Int(i32),
     String(String),
     Symbol(String),
     Application(Box<Expr>, Vec<Expr>),
     Quoted(Vec<Expr>),
+    Def(String, Box<Expr>),
 }
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::False => write!(f, "false"),
+            Expr::Nil => write!(f, "nil"),
             Expr::True => write!(f, "true"),
             Expr::Int(n) => write!(f, "{}", n),
             Expr::String(s) => write!(f, "\"{}\"", s),
@@ -31,6 +32,7 @@ impl Display for Expr {
                 "(quote{})",
                 String::from_iter(exprs.iter().map(|a| format!(" {}", a)))
             ),
+            Expr::Def(name, expr) => write!(f, "(def {name} {expr})"),
         }
     }
 }
@@ -53,7 +55,7 @@ impl Expr {
         match tokens {
             [Token::Num(n), tail @ ..] => Ok((Expr::Int(*n), tail)),
             [Token::String(s), tail @ ..] => Ok((Expr::String(String::from(*s)), tail)),
-            [Token::Symbol("false"), tail @ ..] => Ok((Expr::False, tail)),
+            [Token::Symbol("nil"), tail @ ..] => Ok((Expr::Nil, tail)),
             [Token::Symbol("true"), tail @ ..] => Ok((Expr::True, tail)),
             [Token::Symbol(s), tail @ ..] => Ok((Expr::Symbol(String::from(*s)), tail)),
             [Token::LeftParen, tail @ ..] => Self::parse_application(tail),
@@ -74,19 +76,34 @@ impl Expr {
             right.push(expr);
             arg_tokens = tail;
         }
+
         match arg_tokens {
-            [Token::RightParen, tail @ ..] => match left {
-                // When we parse a quoted expression, return `Expr::Quoted`
-                // rather than `Expr::Application`.
-                Expr::Symbol(symbol) if symbol == "quote" => {
-                    let quoted = Expr::Quoted(right);
-                    Ok((quoted, tail))
+            [Token::RightParen, tail @ ..] => {
+                // Depending on the `left` expr, we may want to produce a more
+                // specialized type than `Expr::Application`.
+                match left {
+                    Expr::Symbol(symbol) => match symbol.as_str() {
+                        "quote" => {
+                            let quoted = Expr::Quoted(right);
+                            Ok((quoted, tail))
+                        }
+                        "def" => match right.as_slice() {
+                            [Expr::Symbol(name), body] => {
+                                let definition =
+                                    Expr::Def(name.to_string(), Box::new(body.clone()));
+                                Ok((definition, tail))
+                            }
+                            _ => Err(ParseError::Generic),
+                        },
+                        _ => {
+                            let application =
+                                Expr::Application(Box::new(Expr::Symbol(symbol)), right);
+                            Ok((application, tail))
+                        }
+                    },
+                    _ => Err(ParseError::Generic),
                 }
-                _ => {
-                    let application = Expr::Application(Box::new(left), right);
-                    Ok((application, tail))
-                }
-            },
+            }
             _ => Err(ParseError::Generic),
         }
     }
