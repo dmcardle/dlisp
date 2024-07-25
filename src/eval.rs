@@ -78,7 +78,26 @@ impl Evaluator {
                     "add" => self.builtin_add(&args),
                     "car" => self.builtin_car(&args),
                     "cons" => self.builtin_cons(&args),
-                    _ => Err(RuntimeError::UnknownFunction(func_name.to_string())),
+                    _ => {
+                        // TODO evaluate the function expression? Or just do
+                        // simple environment lookups? let left =
+                        //
+                        // self.eval(boxed_expr)?;
+                        match self.env.get(func_name) {
+                            Some(expr) => {
+                                // If expr looks like this: (quote (quote a b c) (add a c))
+                                //
+                                // 1. Strip the parameter list, (quote a b c)
+                                //
+                                // 2. Create a new environment that maps `a` to
+                                // `args[0]`, `b` to `args[1]`, etc.
+                                //
+                                // 3. Eval in the new environment.
+                                todo!("implement apply")
+                            }
+                            None => Err(RuntimeError::UnknownFunction(func_name.to_string())),
+                        }
+                    }
                 },
                 _ => Err(RuntimeError::Uncallable),
             },
@@ -302,5 +321,12 @@ mod tests {
                 got: _
             })
         );
+    }
+
+    #[test]
+    fn test_eval_func() {
+        let mut evaluator = Evaluator::new();
+        assert_matches!(evaluator.eval("(def f (quote (add x 1)))"), Ok(Expr::Nil));
+        assert_matches!(evaluator.eval("(f 42)"), Ok(Expr::Int(43)));
     }
 }
