@@ -215,54 +215,57 @@ mod tests {
     #[test]
     fn test_cond() {
         let expr = Expr::parse_str("(cond 0 \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse_str("(cond 1 \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse_str("(cond 2 \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
 
         let expr = Expr::parse_str("(cond \"x\" \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_selector() {
         let expr = Expr::parse_str("(cond (add 0 0) \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("lies")));
 
         let expr = Expr::parse_str("(cond (add 1 0) \"truth\" \"lies\")").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("truth")));
     }
 
     #[test]
     fn test_cond_complex_result() {
         let expr = Expr::parse_str("(cond 1 (cond 0 \"a\" \"b\") \"c\")").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
 
         let expr = Expr::parse_str("(cond 0 \"c\" (cond 0 \"a\" \"b\"))").unwrap();
-        let expr = eval_expr(&expr).unwrap();
+        let expr = Evaluator::new().eval_expr(&expr).unwrap();
         assert_eq!(expr, Expr::String(String::from("b")));
     }
 
     #[test]
     fn test_car_empty() {
         let expr = Expr::parse_str("(car (quote))").unwrap();
-        assert_matches!(eval_expr(&expr), Err(RuntimeError::CarEmpty));
+        assert_matches!(
+            Evaluator::new().eval_expr(&expr),
+            Err(RuntimeError::CarEmpty)
+        );
     }
 
     #[test]
     fn test_car_simple() {
         let expr = Expr::parse_str("(car (quote 1 2 3))").unwrap();
-        assert_matches!(eval_expr(&expr), Ok(Expr::Int(1)));
+        assert_matches!(Evaluator::new().eval_expr(&expr), Ok(Expr::Int(1)));
     }
 
     /// Test that `car` evaluates its argument rather than assuming it's already
@@ -270,27 +273,34 @@ mod tests {
     #[test]
     fn test_car_eval_args() {
         let expr = Expr::parse_str("(car (cond 0 (quote) (quote 1 2)))").unwrap();
-        assert_matches!(eval_expr(&expr), Ok(Expr::Int(1)));
+        assert_matches!(Evaluator::new().eval_expr(&expr), Ok(Expr::Int(1)));
     }
 
     #[test]
     fn test_car_eval_args_two_levels() {
         let expr = Expr::parse_str("(car (cond 0 (quote) (cond 0 (quote) (quote 1 2))))").unwrap();
-        assert_matches!(eval_expr(&expr), Ok(Expr::Int(1)));
+        assert_matches!(Evaluator::new().eval_expr(&expr), Ok(Expr::Int(1)));
     }
 
     #[test]
     fn test_car_eval_args_empty() {
         let expr = Expr::parse_str("(car (cond 1 (quote) (quote 1 2)))").unwrap();
-        assert_matches!(eval_expr(&expr), Err(RuntimeError::CarEmpty));
+        assert_matches!(
+            Evaluator::new().eval_expr(&expr),
+            Err(RuntimeError::CarEmpty)
+        );
     }
 
     #[test]
     fn test_car_eval_args_wrong_type() {
         let expr = Expr::parse_str("(car (cond 1 42 (quote 1 2)))").unwrap();
         assert_matches!(
-            eval_expr(&expr),
-            Err(RuntimeError::WrongType { want: _, got: _ })
+            Evaluator::new().eval_expr(&expr),
+            Err(RuntimeError::WrongType {
+                func: _,
+                want: _,
+                got: _
+            })
         );
     }
 }
