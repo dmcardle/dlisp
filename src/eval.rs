@@ -110,16 +110,33 @@ impl Evaluator {
                         //     (def f (quote (quote a)
                         //                   (def g (quote (quote) a))))
                         //
+
+                        let args_evaluated: Vec<Expr> =
+                            args.iter().map(|a| self.eval_expr(a)).try_collect()?;
+
                         match self.env.get(func_name) {
                             Some(func_value @ Expr::Quoted(func_def)) => {
                                 match func_def.as_slice() {
-                                    [Expr::Quoted(args), func_body] => {
-                                        print!("Evaluating {func_name}(");
-                                        for arg in args {
-                                            print!("{arg},");
+                                    [Expr::Quoted(func_args), func_body] => {
+                                        if func_args.len() != args.len() {
+                                            return Err(RuntimeError::MalformedFunction(
+                                                func_value.clone(),
+                                            ));
                                         }
-                                        println!(") = {func_body}");
-                                        todo!("evaluate function with arguments")
+
+                                        let mut evaluator = Evaluator::new();
+                                        for (func_arg, arg) in func_args.iter().zip(args_evaluated)
+                                        {
+                                            if let Expr::Symbol(func_arg_name) = func_arg {
+                                                evaluator.env.insert(func_arg_name.clone(), arg);
+                                            } else {
+                                                return Err(RuntimeError::MalformedFunction(
+                                                    func_value.clone(),
+                                                ));
+                                            }
+                                        }
+
+                                        evaluator.eval_expr(func_body)
                                     }
                                     _ => Err(RuntimeError::MalformedFunction(func_value.clone())),
                                 }
@@ -364,7 +381,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_eval_func() {
         let mut evaluator = Evaluator::new();
         assert_matches!(
@@ -372,5 +388,15 @@ mod tests {
             Ok(Expr::Nil)
         );
         assert_matches!(evaluator.eval("(f 42)"), Ok(Expr::Int(43)));
+    }
+
+    #[test]
+    fn test_eval_func_evaluates_args() {
+        let mut evaluator = Evaluator::new();
+        assert_matches!(
+            evaluator.eval("(def dbl (quote (quote x) (add x x)))"),
+            Ok(Expr::Nil)
+        );
+        assert_matches!(evaluator.eval("(dbl (dbl 5))"), Ok(Expr::Int(20)));
     }
 }
