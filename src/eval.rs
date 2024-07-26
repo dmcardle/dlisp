@@ -12,6 +12,7 @@ pub enum RuntimeError {
     CarEmpty,
     UnknownFunction(String),
     MalformedFunction(Expr),
+    MalformedFunctionArg(Expr),
     WrongType {
         func: &'static str,
         want: &'static str,
@@ -34,6 +35,7 @@ impl Display for RuntimeError {
             RuntimeError::CarEmpty => write!(f, "Car called on empty"),
             RuntimeError::UnknownFunction(s) => write!(f, "Unknown function {}", s),
             RuntimeError::MalformedFunction(s) => write!(f, "Malformed function {}", s),
+            RuntimeError::MalformedFunctionArg(s) => write!(f, "Malformed function arg {}", s),
             RuntimeError::WrongType { func, want, got } => {
                 write!(f, "{func} wanted a value of type {want}, but got {got}")
             }
@@ -238,29 +240,31 @@ impl Evaluator {
 
         let args_evaluated: Vec<Expr> = args.iter().map(|a| self.eval_expr(a)).try_collect()?;
 
-        match self.env.get(func_name) {
+        let (func_args, func_body) = match self.env.get(func_name) {
             Some(func_value @ Expr::Quoted(func_def)) => match func_def.as_slice() {
                 [Expr::Quoted(func_args), func_body] => {
                     if func_args.len() != args.len() {
-                        return Err(RuntimeError::MalformedFunction(func_value.clone()));
+                        Err(RuntimeError::MalformedFunction(func_value.clone()))
+                    } else {
+                        Ok((func_args, func_body))
                     }
-
-                    let mut evaluator = Evaluator::new();
-                    for (func_arg, arg) in func_args.iter().zip(args_evaluated) {
-                        if let Expr::Symbol(func_arg_name) = func_arg {
-                            evaluator.env.insert(func_arg_name.clone(), arg);
-                        } else {
-                            return Err(RuntimeError::MalformedFunction(func_value.clone()));
-                        }
-                    }
-
-                    evaluator.eval_expr(func_body)
                 }
                 _ => Err(RuntimeError::MalformedFunction(func_value.clone())),
             },
             Some(expr) => Err(RuntimeError::MalformedFunction(expr.clone())),
             None => Err(RuntimeError::UnknownFunction(func_name.to_string())),
+        }?;
+
+        let mut evaluator = Evaluator::new();
+        for (func_arg, arg) in func_args.iter().zip(args_evaluated) {
+            if let Expr::Symbol(func_arg_name) = func_arg {
+                evaluator.env.insert(func_arg_name.clone(), arg);
+            } else {
+                return Err(RuntimeError::MalformedFunctionArg(func_arg.clone()));
+            }
         }
+
+        evaluator.eval_expr(func_body)
     }
 }
 
