@@ -237,6 +237,8 @@ impl Evaluator {
         //     (def f (quote (quote a)
         //                   (def g (quote (quote) a))))
         //
+        // Because we don't have scoping yet, I can't define functions in terms
+        // of other functions.
 
         let args_evaluated: Vec<Expr> = args.iter().map(|a| self.eval_expr(a)).try_collect()?;
 
