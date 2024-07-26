@@ -80,71 +80,7 @@ impl Evaluator {
                     "add" => self.builtin_add(&args),
                     "car" => self.builtin_car(&args),
                     "cons" => self.builtin_cons(&args),
-                    _ => {
-                        // When we encounter a function application of a
-                        // non-builtin, simply look it up in the environment. If
-                        // it's not there, or it doesn't have the shape of a
-                        // function definition, return a runtime error.
-                        //
-                        // To evaluate, create a new `Evaluator` and explicitly
-                        // map each of the function's named parameters with
-                        // `args`.
-                        //
-                        // Example of a function `f` that adds its two arguments:
-                        //
-                        //     (def f (quote (quote a b) (add a b)))
-                        //
-                        // When we evaluate (f 1 2), we create a new `Evaluator`
-                        // where `a` is 1 and `b` is 2. Then we evaluate the
-                        // body of `f`, (add a b), in the new environment.
-                        //
-                        // TODO: Decide whether the LHS of the function
-                        // application should itself be evaluated.
-                        //
-                        // TODO: Determine how to implement lexical scoping,
-                        // which would enable us to return closures from
-                        // functions. For instance, if we supported closures,
-                        // the function `f` would return a zero-parameter thunk
-                        // `g` that returns the value originally passed to `f`.
-                        //
-                        //     (def f (quote (quote a)
-                        //                   (def g (quote (quote) a))))
-                        //
-
-                        let args_evaluated: Vec<Expr> =
-                            args.iter().map(|a| self.eval_expr(a)).try_collect()?;
-
-                        match self.env.get(func_name) {
-                            Some(func_value @ Expr::Quoted(func_def)) => {
-                                match func_def.as_slice() {
-                                    [Expr::Quoted(func_args), func_body] => {
-                                        if func_args.len() != args.len() {
-                                            return Err(RuntimeError::MalformedFunction(
-                                                func_value.clone(),
-                                            ));
-                                        }
-
-                                        let mut evaluator = Evaluator::new();
-                                        for (func_arg, arg) in func_args.iter().zip(args_evaluated)
-                                        {
-                                            if let Expr::Symbol(func_arg_name) = func_arg {
-                                                evaluator.env.insert(func_arg_name.clone(), arg);
-                                            } else {
-                                                return Err(RuntimeError::MalformedFunction(
-                                                    func_value.clone(),
-                                                ));
-                                            }
-                                        }
-
-                                        evaluator.eval_expr(func_body)
-                                    }
-                                    _ => Err(RuntimeError::MalformedFunction(func_value.clone())),
-                                }
-                            }
-                            Some(expr) => Err(RuntimeError::MalformedFunction(expr.clone())),
-                            None => Err(RuntimeError::UnknownFunction(func_name.to_string())),
-                        }
-                    }
+                    _ => self.eval_application(func_name, &args),
                 },
                 _ => Err(RuntimeError::Uncallable),
             },
@@ -269,6 +205,61 @@ impl Evaluator {
                 want: 2,
                 got: args.len(),
             }),
+        }
+    }
+
+    fn eval_application(&mut self, func_name: &str, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        // When we encounter a function application of a non-builtin, simply
+        // look it up in the environment. If it's not there, or it doesn't have
+        // the shape of a function definition, return a runtime error.
+        //
+        // To evaluate, create a new `Evaluator` and explicitly map each of the
+        // function's named parameters with `args`.
+        //
+        // Example of a function `f` that adds its two arguments:
+        //
+        //     (def f (quote (quote a b) (add a b)))
+        //
+        // When we evaluate (f 1 2), we create a new `Evaluator` where `a` is 1
+        // and `b` is 2. Then we evaluate the body of `f`, (add a b), in the new
+        // environment.
+        //
+        // TODO: Decide whether the LHS of the function application should
+        // itself be evaluated.
+        //
+        // TODO: Determine how to implement lexical scoping, which would enable
+        // us to return closures from functions. For instance, if we supported
+        // closures, the function `f` would return a zero-parameter thunk `g`
+        // that returns the value originally passed to `f`.
+        //
+        //     (def f (quote (quote a)
+        //                   (def g (quote (quote) a))))
+        //
+
+        let args_evaluated: Vec<Expr> = args.iter().map(|a| self.eval_expr(a)).try_collect()?;
+
+        match self.env.get(func_name) {
+            Some(func_value @ Expr::Quoted(func_def)) => match func_def.as_slice() {
+                [Expr::Quoted(func_args), func_body] => {
+                    if func_args.len() != args.len() {
+                        return Err(RuntimeError::MalformedFunction(func_value.clone()));
+                    }
+
+                    let mut evaluator = Evaluator::new();
+                    for (func_arg, arg) in func_args.iter().zip(args_evaluated) {
+                        if let Expr::Symbol(func_arg_name) = func_arg {
+                            evaluator.env.insert(func_arg_name.clone(), arg);
+                        } else {
+                            return Err(RuntimeError::MalformedFunction(func_value.clone()));
+                        }
+                    }
+
+                    evaluator.eval_expr(func_body)
+                }
+                _ => Err(RuntimeError::MalformedFunction(func_value.clone())),
+            },
+            Some(expr) => Err(RuntimeError::MalformedFunction(expr.clone())),
+            None => Err(RuntimeError::UnknownFunction(func_name.to_string())),
         }
     }
 }
