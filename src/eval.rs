@@ -81,17 +81,35 @@ impl Evaluator {
                     "car" => self.builtin_car(&args),
                     "cons" => self.builtin_cons(&args),
                     _ => {
-                        // TODO evaluate the function expression? Or just do
-                        // simple environment lookups? let left = self.eval(boxed_expr)?;
+                        // When we encounter a function application of a
+                        // non-builtin, simply look it up in the environment. If
+                        // it's not there, or it doesn't have the shape of a
+                        // function definition, return a runtime error.
                         //
-                        // If expr looks like this: (quote (quote a b c) (add a c))
+                        // To evaluate, create a new `Evaluator` and explicitly
+                        // map each of the function's named parameters with
+                        // `args`.
                         //
-                        // 1. Strip the parameter list, (quote a b c)
+                        // Example of a function `f` that adds its two arguments:
                         //
-                        // 2. Create a new environment that maps `a` to
-                        // `args[0]`, `b` to `args[1]`, etc.
+                        //     (def f (quote (quote a b) (add a b)))
                         //
-                        // 3. Eval in the new environment.
+                        // When we evaluate (f 1 2), we create a new `Evaluator`
+                        // where `a` is 1 and `b` is 2. Then we evaluate the
+                        // body of `f`, (add a b), in the new environment.
+                        //
+                        // TODO: Decide whether the LHS of the function
+                        // application should itself be evaluated.
+                        //
+                        // TODO: Determine how to implement lexical scoping,
+                        // which would enable us to return closures from
+                        // functions. For instance, if we supported closures,
+                        // the function `f` would return a zero-parameter thunk
+                        // `g` that returns the value originally passed to `f`.
+                        //
+                        //     (def f (quote (quote a)
+                        //                   (def g (quote (quote) a))))
+                        //
                         match self.env.get(func_name) {
                             Some(func_value @ Expr::Quoted(func_def)) => {
                                 match func_def.as_slice() {
