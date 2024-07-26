@@ -11,6 +11,7 @@ pub enum RuntimeError {
     UndefinedSymbol,
     CarEmpty,
     UnknownFunction(String),
+    MalformedFunction(Expr),
     WrongType {
         func: &'static str,
         want: &'static str,
@@ -32,6 +33,7 @@ impl Display for RuntimeError {
             RuntimeError::UndefinedSymbol => write!(f, "Undefined symbol"),
             RuntimeError::CarEmpty => write!(f, "Car called on empty"),
             RuntimeError::UnknownFunction(s) => write!(f, "Unknown function {}", s),
+            RuntimeError::MalformedFunction(s) => write!(f, "Malformed function {}", s),
             RuntimeError::WrongType { func, want, got } => {
                 write!(f, "{func} wanted a value of type {want}, but got {got}")
             }
@@ -80,21 +82,31 @@ impl Evaluator {
                     "cons" => self.builtin_cons(&args),
                     _ => {
                         // TODO evaluate the function expression? Or just do
-                        // simple environment lookups? let left =
+                        // simple environment lookups? let left = self.eval(boxed_expr)?;
                         //
-                        // self.eval(boxed_expr)?;
+                        // If expr looks like this: (quote (quote a b c) (add a c))
+                        //
+                        // 1. Strip the parameter list, (quote a b c)
+                        //
+                        // 2. Create a new environment that maps `a` to
+                        // `args[0]`, `b` to `args[1]`, etc.
+                        //
+                        // 3. Eval in the new environment.
                         match self.env.get(func_name) {
-                            Some(expr) => {
-                                // If expr looks like this: (quote (quote a b c) (add a c))
-                                //
-                                // 1. Strip the parameter list, (quote a b c)
-                                //
-                                // 2. Create a new environment that maps `a` to
-                                // `args[0]`, `b` to `args[1]`, etc.
-                                //
-                                // 3. Eval in the new environment.
-                                todo!("implement apply")
+                            Some(func_value @ Expr::Quoted(func_def)) => {
+                                match func_def.as_slice() {
+                                    [Expr::Quoted(args), func_body] => {
+                                        print!("Evaluating {func_name}(");
+                                        for arg in args {
+                                            print!("{arg},");
+                                        }
+                                        println!(") = {func_body}");
+                                        todo!("evaluate function with arguments")
+                                    }
+                                    _ => Err(RuntimeError::MalformedFunction(func_value.clone())),
+                                }
                             }
+                            Some(expr) => Err(RuntimeError::MalformedFunction(expr.clone())),
                             None => Err(RuntimeError::UnknownFunction(func_name.to_string())),
                         }
                     }
@@ -324,9 +336,23 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_func() {
+    fn test_eval_func_malformed() {
         let mut evaluator = Evaluator::new();
         assert_matches!(evaluator.eval("(def f (quote (add x 1)))"), Ok(Expr::Nil));
+        assert_matches!(
+            evaluator.eval("(f 42)"),
+            Err(RuntimeError::MalformedFunction(_))
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_eval_func() {
+        let mut evaluator = Evaluator::new();
+        assert_matches!(
+            evaluator.eval("(def f (quote (quote x) (add x 1)))"),
+            Ok(Expr::Nil)
+        );
         assert_matches!(evaluator.eval("(f 42)"), Ok(Expr::Int(43)));
     }
 }
