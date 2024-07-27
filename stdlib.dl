@@ -14,3 +14,15 @@
 ;
 ; TODO This cannot work until the interpreter supports lexical scoping.
 (def bool   (quote (quote p) (not (not p))))
+
+
+; The factorial function is pretty far beyond reach right now.
+;
+; Things we need for it to work:
+;
+; (1) recursive function calls,
+; (2) implementations of `mul` and `sub`,
+; (3) multi-line input would be nice to have.
+; (4) more compact `def` syntax would also be nice.
+;
+(def fact '( '(n) (cond (not n) 1 (mul n (fact (sub n 1))))))

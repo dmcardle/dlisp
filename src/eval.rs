@@ -258,6 +258,7 @@ impl Evaluator {
         }?;
 
         let mut evaluator = Evaluator::new();
+        evaluator.env = self.env.clone(); // This implements dynamic scoping.
         for (func_arg, arg) in func_args.iter().zip(args_evaluated) {
             if let Expr::Symbol(func_arg_name) = func_arg {
                 evaluator.env.insert(func_arg_name.clone(), arg);
