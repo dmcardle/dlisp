@@ -52,6 +52,7 @@ impl Expr {
     pub fn parse(tokens: &[Token]) -> Result<Expr, ParseError> {
         let (expr, tail) = Self::parse_expr(tokens)?;
         if !tail.is_empty() {
+            // TODO: This should be an error.
             println!("UNPARSED TAIL: {:?}", tail);
         }
         Ok(expr)
@@ -87,7 +88,6 @@ impl Expr {
                     final_tail = tail;
                 }
 
-                println!("*** right: {exprs:?}");
                 match final_tail {
                     [Token::RightParen, final_tail @ ..] => Ok((Expr::Quoted(exprs), final_tail)),
                     _ => Err(ParseError::NoToken),

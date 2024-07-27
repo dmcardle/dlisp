@@ -12,19 +12,41 @@ use std::io::Write;
 
 use eval::Evaluator;
 use expr::Expr;
+use token::{Token, Tokenizer};
 
 fn main() -> Result<(), String> {
-    const PROMPT: &str = "";
     let mut evaluator = Evaluator::new();
 
     // TODO: Figure out how to support multi-line expressions.
     let stdlib = std::include_bytes!("../stdlib.dl");
     let stdlib = std::str::from_utf8(stdlib).expect("stdlib must be utf-8");
-    for line in stdlib.lines() {
-        let line = line.trim();
-        println!("{PROMPT}{line}");
-        evaluator.eval(&line).map_err(|e| format!("{}", e))?;
+    let stdlib_tokens = Token::lex(stdlib).map_err(|e| e.to_string())?;
+
+    let mut last_i = 0;
+    let mut depth = 0;
+    for (i, t) in stdlib_tokens.iter().enumerate() {
+        match &t {
+            Token::LeftParen => depth += 1,
+            Token::RightParen => depth -= 1,
+            _ => {}
+        };
+        if depth == 0 {
+            // Select the tokens for a single expr.
+            let tokens = &stdlib_tokens[last_i..=i];
+            last_i = i + 1;
+
+            let expr = Expr::parse(&tokens).map_err(|e| format!("Parse error: {}", e))?;
+            println!("stdlib: {expr}");
+            evaluator
+                .eval_expr(&expr)
+                .map_err(|e| format!("Eval error: {}", e))?;
+        }
     }
+
+    // The prompt must be non-empty because we do not print nil results.
+    // Printing the prompt tells the user implicitly that their expression was
+    // evaluated.
+    const PROMPT: &str = "::: ";
 
     println!("{}", PROMPT);
 

@@ -2,21 +2,27 @@
 ;;;; The DLISP standard library.
 ;;;;
 
-;;; Primitive logic functions.
+(def not (quote '(p) (cond p nil true)))
+(def and (quote '(p q) (cond p q p)))
+(def or (quote '(a b) (cond a a b)))
 
-(def not    (quote (quote p) (cond p nil true)))
-(def and    (quote (quote p q) (cond p q p)))
-(def or     (quote (quote a b) (cond a a b)))
-
-;;; Second-order logic functions.
-
-; A casting function from truthy values to `nil` or `false`.
-(def bool   (quote (quote p) (not (not p))))
-
-;;; Numerical functions.
+; A casting function from truthy values to `nil` or `false`. Note that this is a
+; second-order function because it invokes `not`, which is defined right here in
+; the stdlib!
+(def bool (quote '(p) (not (not p))))
 
 ; Multiplication of positive integers.
-(def mul (quote '(a b) (cond (sub a 1) (add b (mul (sub a 1) b)) b)))
+; TODO: Design a scheme for handling bad inputs.
+(def mul (quote '(a b)
+                ; This naive implementation of multiplication works by summing
+                ; of `a` repetitions of `b`.
+                (cond (not a) 0
+                      ; Compute ab = b + ab - b
+                      ;            = b + b(a - 1)
+                      (add b (mul b (sub a 1))))))
 
 ; Factorial of positive integers.
-(def fact '( '(n) (cond (not n) 1 (mul n (fact (sub n 1))))))
+(def fact (quote '(n)
+                 (cond (not n)
+                       1
+                       (mul n (fact (sub n 1))))))
