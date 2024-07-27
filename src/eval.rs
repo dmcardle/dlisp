@@ -80,6 +80,7 @@ impl Evaluator {
                     "print" => self.builtin_print(&args),
                     "show" => self.builtin_show(&args),
                     "add" => self.builtin_add(&args),
+                    "sub" => self.builtin_sub(&args),
                     "car" => self.builtin_car(&args),
                     "cons" => self.builtin_cons(&args),
                     _ => self.eval_application(func_name, &args),
@@ -153,6 +154,30 @@ impl Evaluator {
             }
         }
         Ok(Expr::Int(sum))
+    }
+
+    fn builtin_sub(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        if let [a, b] = args {
+            match (self.eval_expr(a)?, self.eval_expr(b)?) {
+                (Expr::Int(a), Expr::Int(b)) => Ok(Expr::Int(a - b)),
+                (a, Expr::Int(_)) => Err(RuntimeError::WrongType {
+                    func: "sub",
+                    want: "Int",
+                    got: a.clone(),
+                }),
+                (_, b) => Err(RuntimeError::WrongType {
+                    func: "sub",
+                    want: "Int",
+                    got: b.clone(),
+                }),
+            }
+        } else {
+            Err(RuntimeError::WrongNumArgs {
+                func: "sub",
+                want: 2,
+                got: args.len(),
+            })
+        }
     }
 
     fn builtin_car(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
