@@ -82,6 +82,7 @@ impl Evaluator {
                     "add" => self.builtin_add(&args),
                     "sub" => self.builtin_sub(&args),
                     "car" => self.builtin_car(&args),
+                    "cdr" => self.builtin_cdr(&args),
                     "cons" => self.builtin_cons(&args),
                     _ => self.eval_application(func_name, &args),
                 },
@@ -105,6 +106,7 @@ impl Evaluator {
                 // Evaluate the selector to decide which sub-expression to evaluate.
                 match self.eval_expr(selector)? {
                     Expr::Nil | Expr::Int(0) => self.eval_expr(e2),
+                    Expr::Quoted(xs) if xs.len() == 0 => self.eval_expr(e2),
                     _ => self.eval_expr(e1),
                 }
             }
@@ -200,6 +202,32 @@ impl Evaluator {
             },
             _ => Err(RuntimeError::WrongNumArgs {
                 func: "car",
+                want: 1,
+                got: args.len(),
+            }),
+        }
+    }
+
+    fn builtin_cdr(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
+        match args {
+            [Expr::Quoted(expr)] => match &expr[..] {
+                [_, tail @ ..] => Ok(Expr::Quoted(tail.into_iter().cloned().collect())),
+                _ => Err(RuntimeError::CarEmpty),
+            },
+            [e] => match self.eval_expr(&e) {
+                Ok(quoted @ Expr::Quoted(_)) => {
+                    let args = [quoted.clone()];
+                    self.builtin_cdr(&args)
+                }
+                Ok(e2) => Err(RuntimeError::WrongType {
+                    func: "cdr",
+                    want: "Quoted",
+                    got: e2.clone(),
+                }),
+                err @ Err(_) => err,
+            },
+            _ => Err(RuntimeError::WrongNumArgs {
+                func: "cdr",
                 want: 1,
                 got: args.len(),
             }),

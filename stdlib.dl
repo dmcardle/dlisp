@@ -31,3 +31,26 @@
                  (cond (not n)
                        1
                        (mul n (fact (sub n 1))))))
+
+;; A very horrible equality check for positive integers.
+(def pos_eq (quote '(a b)
+                   (cond (and (not a) (not b))
+                         true
+                         (cond (or (and (not a) b)
+                                   (and a (not b)))
+                               nil
+                               (pos_eq (sub a 1) (sub b 1))))))
+
+;; Given positive integers `start` and `end`, returns the list of intermediate
+;; values. Includes `start`, but excludes `end`.
+(def range (quote '(start end)
+                  (cond (pos_eq start end)
+                        '()
+                        (cons start
+                              (range (add start 1)
+                                     end)))))
+
+(def map (quote '(f xs)
+                (cond xs
+                      (cons (f (car xs)) (map f (cdr xs)))
+                      '())))
