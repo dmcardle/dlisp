@@ -1,0 +1,16 @@
+;;;;
+;;;; The DLISP standard library.
+;;;;
+
+;;; Primitive logic functions.
+
+(def not    (quote (quote p) (cond p nil true)))
+(def and    (quote (quote p q) (cond p q p)))
+(def or     (quote (quote a b) (cond a a b)))
+
+;;; Second-order logic functions.
+
+; A casting function from truthy values to `nil` or `false`.
+;
+; TODO This cannot work until the interpreter supports lexical scoping.
+(def bool   (quote (quote p) (not (not p))))
