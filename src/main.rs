@@ -14,11 +14,25 @@ use eval::Evaluator;
 use expr::Expr;
 
 fn main() -> Result<(), String> {
+    const PROMPT: &str = "";
     let mut evaluator = Evaluator::new();
+
+    // TODO: Figure out how to support multi-line expressions.
+    let stdlib = std::include_bytes!("../stdlib.dl");
+    let stdlib = std::str::from_utf8(stdlib).expect("stdlib must be utf-8");
+    for line in stdlib.lines() {
+        let line = line.trim();
+        println!("{PROMPT}{line}");
+        evaluator.eval(&line).map_err(|e| format!("{}", e))?;
+    }
+
+    println!("{}", PROMPT);
+
     loop {
-        print!("::: ");
+        print!("{}", PROMPT);
         if std::io::stdout().flush().is_err() {
             println!("Failed to flush stdout");
+            return Ok(());
         }
 
         let mut buffer = String::new();
@@ -42,7 +56,7 @@ fn main() -> Result<(), String> {
         let expr_result = evaluator.eval(&buffer).map_err(|e| format!("{}", e));
         match expr_result {
             Ok(Expr::Nil) => {}
-            Ok(expr) => println!("{}", expr),
+            Ok(expr) => println!("-> {}", expr),
             Err(err) => println!("! {}", err),
         }
     }

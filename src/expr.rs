@@ -40,7 +40,13 @@ impl Display for Expr {
 impl Expr {
     pub fn parse_str(code: &str) -> Result<Expr, ParseError> {
         let tokens: Vec<Token> = Token::lex(code)?;
-        Expr::parse(&tokens)
+        // The given `code` would yield zero tokens if it's empty or only
+        // contains a comment.
+        if tokens.is_empty() {
+            Ok(Expr::Nil)
+        } else {
+            Expr::parse(&tokens)
+        }
     }
 
     pub fn parse(tokens: &[Token]) -> Result<Expr, ParseError> {
@@ -59,9 +65,40 @@ impl Expr {
             [Token::Symbol("true"), tail @ ..] => Ok((Expr::True, tail)),
             [Token::Symbol(s), tail @ ..] => Ok((Expr::Symbol(String::from(*s)), tail)),
             [Token::LeftParen, tail @ ..] => Self::parse_application(tail),
+            [Token::SingleQuote, tail @ ..] => Self::parse_compact_quote(tail),
             [Token::RightParen, ..] => Err(ParseError::Generic),
-            [Token::SingleQuote, ..] => Err(ParseError::Generic),
+            // The more compact syntax for (quote _) is surprisingly subtle. 'x
+            // is equivalent to (quoted x), but '(x) is (quoted x).
             [] => Err(ParseError::NoToken),
+        }
+    }
+
+    fn parse_compact_quote<'a>(
+        tokens: &'a [Token<'a>],
+    ) -> Result<(Expr, &'a [Token<'a>]), ParseError> {
+        match tokens {
+            [Token::LeftParen, Token::RightParen, tail @ ..] => Ok((Expr::Quoted(vec![]), tail)),
+            [Token::LeftParen, tail @ ..] => {
+                // Parse as many expressions as possible and quote them.
+                let mut exprs = Vec::new();
+                let mut final_tail = tail;
+                while let Ok((expr, tail)) = Self::parse_expr(final_tail) {
+                    exprs.push(expr);
+                    final_tail = tail;
+                }
+
+                println!("*** right: {exprs:?}");
+                match final_tail {
+                    [Token::RightParen, final_tail @ ..] => Ok((Expr::Quoted(exprs), final_tail)),
+                    _ => Err(ParseError::NoToken),
+                }
+            }
+            _ => {
+                // Parse one expression and quote it.
+                let (expr, tail) = Self::parse_expr(tokens)?;
+                let quoted = Expr::Quoted(vec![expr]);
+                Ok((quoted, tail))
+            }
         }
     }
 
@@ -184,5 +221,55 @@ mod tests {
                 Expr::String(String::from("abc"))
             ]))
         );
+    }
+
+    #[test]
+    fn test_single_quote_with_parens() {
+        assert_eq!(Expr::parse_str("(quote x)"), Expr::parse_str("'(x)"),);
+        assert_eq!(Expr::parse_str("(quote x y)"), Expr::parse_str("'(x y)"),);
+        assert_eq!(
+            Expr::parse_str("(def bool   (quote (quote p) (not (not p))))"),
+            Expr::parse_str("(def bool   (quote '(p) (not (not p))))"),
+        );
+        assert_eq!(
+            Expr::parse_str("(def bool   (quote (quote p) (not (not p))))"),
+            Expr::parse_str("(def bool   '('(p) (not (not p))))"),
+        );
+        assert_eq!(
+            Expr::parse_str("(def bool   (quote (quote p) (not (not p))))"),
+            Expr::parse_str("(def bool   '('(p) (not (not p))))"),
+        );
+    }
+
+    #[test]
+    fn test_single_quote_without_parens() {
+        assert_eq!(
+            Expr::parse_str("'x"),
+            Ok(Expr::Quoted(vec![Expr::Symbol(String::from("x"))]))
+        );
+        assert_eq!(
+            Expr::parse_str("(def bool   (quote (quote p) (not (not p))))"),
+            Expr::parse_str("(def bool   (quote 'p (not (not p))))"),
+        );
+        assert_eq!(
+            Expr::parse_str("(def bool   (quote (quote p) (not (not p))))"),
+            Expr::parse_str("(def bool   '( 'p (not (not p))))"),
+        );
+
+        //     let x = Ok(Def(
+        //         "bool",
+        //         Quoted([
+        //             Quoted([Symbol("p")]),
+        //             Application(Symbol("not"), [Application(Symbol("not"), [Symbol("p")])]),
+        //         ]),
+        //     ));
+
+        //     let y = Ok(Def(
+        //         "bool",
+        //         Quoted([Quoted([
+        //             Symbol("p"),
+        //             Application(Symbol("not"), [Application(Symbol("not"), [Symbol("p")])]),
+        //         ])]),
+        //     ));
     }
 }

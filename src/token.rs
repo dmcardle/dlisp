@@ -43,6 +43,17 @@ impl<'a> Iterator for Tokenizer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut chars = self.view.chars();
         match chars.next()? {
+            ';' => {
+                if let Some((n, c)) = self
+                    .view
+                    .char_indices()
+                    .take_while(|(_, c)| *c != '\n')
+                    .last()
+                {
+                    self.view = &self.view[n + 1..];
+                }
+                self.next()
+            }
             '-' | '0'..='9' => Some(self.next_num()),
             'A'..='Z' | 'a'..='z' | '_' => Some(self.next_symbol()),
             c => {
@@ -259,6 +270,16 @@ mod tests {
         );
         assert_eq!(Token::lex(r#""\\\""#), Err(ParseError::UnterminatedString));
         assert_eq!(Token::lex(r#""\\\\""#), Ok(vec![Token::String(r#"\\\\"#)]));
+    }
+
+    #[test]
+    fn test_tokenize_comments() {
+        assert_eq!(Token::lex(";hello\n"), Ok(vec![]));
+        assert_eq!(Token::lex(";hello \n"), Ok(vec![]));
+        assert_eq!(Token::lex(";hello\n42"), Ok(vec![Token::Num(42)]));
+        assert_eq!(Token::lex("42;hello\n"), Ok(vec![Token::Num(42)]));
+        assert_eq!(Token::lex("42;hello"), Ok(vec![Token::Num(42)]));
+        assert_eq!(Token::lex(";hello"), Ok(vec![]));
     }
 
     extern crate test;
