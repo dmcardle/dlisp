@@ -88,12 +88,11 @@ impl Evaluator {
                 },
                 _ => Err(RuntimeError::Uncallable),
             },
-            Expr::Def(name, expr) => {
-                if let Expr::Nil = expr.as_ref() {
+            Expr::Def(name, _, _) => {
+                if let Expr::Nil = expr {
                     self.env.remove(name);
                 } else {
-                    let expr = self.eval_expr(expr)?;
-                    self.env.insert(name.to_string(), expr);
+                    self.env.insert(name.to_string(), expr.clone());
                 }
                 Ok(Expr::Nil)
             }
@@ -294,30 +293,22 @@ impl Evaluator {
         // of other functions.
 
         let args_evaluated: Vec<Expr> = args.iter().map(|a| self.eval_expr(a)).try_collect()?;
-
         let (func_args, func_body) = match self.env.get(func_name) {
-            Some(func_value @ Expr::Quoted(func_def)) => match func_def.as_slice() {
-                [Expr::Quoted(func_args), func_body] => {
-                    if func_args.len() != args.len() {
-                        Err(RuntimeError::MalformedFunction(func_value.clone()))
-                    } else {
-                        Ok((func_args, func_body))
-                    }
+            Some(func_def @ Expr::Def(func_name, func_args, func_body)) => {
+                if func_args.len() != args.len() {
+                    Err(RuntimeError::MalformedFunction(func_def.clone()))
+                } else {
+                    Ok((func_args, func_body))
                 }
-                _ => Err(RuntimeError::MalformedFunction(func_value.clone())),
             },
-            Some(expr) => Err(RuntimeError::MalformedFunction(expr.clone())),
-            None => Err(RuntimeError::UnknownFunction(func_name.to_string())),
+            Some(func_def) => Err(RuntimeError::MalformedFunction(func_def.clone())),
+            None => Err(RuntimeError::UndefinedSymbol),
         }?;
 
         let mut evaluator = Evaluator::new();
         evaluator.env = self.env.clone(); // This implements dynamic scoping.
-        for (func_arg, arg) in func_args.iter().zip(args_evaluated) {
-            if let Expr::Symbol(func_arg_name) = func_arg {
-                evaluator.env.insert(func_arg_name.clone(), arg);
-            } else {
-                return Err(RuntimeError::MalformedFunctionArg(func_arg.clone()));
-            }
+        for (func_arg_name, arg) in func_args.iter().zip(args_evaluated) {
+            evaluator.env.insert(func_arg_name.clone(), arg);
         }
 
         evaluator.eval_expr(func_body)
