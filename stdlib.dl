@@ -54,3 +54,10 @@
                 (cond xs
                       (cons (f (car xs)) (map f (cdr xs)))
                       '())))
+
+(def filter (quote '(f xs)
+                   (cond xs
+                         (cond (f (car xs))
+                               (cons (car xs) (filter f (cdr xs)))
+                               (filter f (cdr xs)))
+                         '())))
