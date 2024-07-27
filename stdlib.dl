@@ -6,22 +6,27 @@
 (def and (quote '(p q) (cond p q p)))
 (def or (quote '(a b) (cond a a b)))
 
-; A casting function from truthy values to `nil` or `false`. Note that this is a
-; second-order function because it invokes `not`, which is defined right here in
-; the stdlib!
+;; A casting function from truthy values to `nil` or `false`. Note that this is
+;; a second-order function because it invokes `not`, which is defined right here
+;; in the stdlib!
 (def bool (quote '(p) (not (not p))))
 
-; Multiplication of positive integers.
-; TODO: Design a scheme for handling bad inputs.
-(def mul (quote '(a b)
-                ; This naive implementation of multiplication works by summing
-                ; of `a` repetitions of `b`.
-                (cond (not a) 0
-                      ; Compute ab = b + ab - b
-                      ;            = b + b(a - 1)
-                      (add b (mul b (sub a 1))))))
+;; Multiplication of positive integers.
+;;
+;; TODO: Design a scheme for handling bad inputs.
+(def mul (quote '(a b) (_mul a b 0)))
 
-; Factorial of positive integers.
+;; Tail-recursive helper function for `mul`. Returns n * m + sum.
+(def _mul (quote '(n m sum)
+                 ;; Although (not n) would be sufficient, we can also
+                 ;; short-circuit when m is zero as an optimization.
+                 (cond (or (not n) (not m))
+                       sum
+                       (_mul (sub n 1)
+                             m
+                             (add sum m)))))
+
+;; Factorial of positive integers.
 (def fact (quote '(n)
                  (cond (not n)
                        1
