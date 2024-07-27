@@ -42,6 +42,9 @@ fn main() -> Result<(), String> {
                 .map_err(|e| format!("Eval error: {}", e))?;
         }
     }
+    if depth > 0 {
+        return Err(String::from("Unterminated expression in stdlib."));
+    }
 
     // The prompt must be non-empty because we do not print nil results.
     // Printing the prompt tells the user implicitly that their expression was
