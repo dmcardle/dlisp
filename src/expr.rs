@@ -32,7 +32,9 @@ impl Display for Expr {
                 "(quote{})",
                 String::from_iter(exprs.iter().map(|a| format!(" {}", a)))
             ),
-            Expr::Def(name, args, expr) => write!(f, "(def {name} '({}) {expr})",
+            Expr::Def(name, args, expr) => write!(
+                f,
+                "(def {name} '({}) {expr})",
                 String::from_iter(args.iter().map(|a| format!(" {}", a)))
             ),
         }
@@ -129,15 +131,20 @@ impl Expr {
                         "def" => match right.as_slice() {
                             [Expr::Symbol(func_name), Expr::Quoted(func_args), body] => {
                                 // Turn the quoted symbols into a list of strings.
-                                let func_arg_names : Vec<String> = func_args.iter().map(|e| match e {
-                                    Expr::Symbol(s) => Some(s.clone()),
-                                    _ => None,
-                                }).try_collect().ok_or(ParseError::Generic)?;
+                                let func_arg_names: Vec<String> = func_args
+                                    .iter()
+                                    .map(|e| match e {
+                                        Expr::Symbol(s) => Some(s.clone()),
+                                        _ => None,
+                                    })
+                                    .try_collect()
+                                    .ok_or(ParseError::Generic)?;
 
-                                let definition =
-                                    Expr::Def(func_name.to_string(),
-                                              func_arg_names,
-                                              Box::new(body.clone()));
+                                let definition = Expr::Def(
+                                    func_name.to_string(),
+                                    func_arg_names,
+                                    Box::new(body.clone()),
+                                );
                                 Ok((definition, tail))
                             }
                             _ => Err(ParseError::Generic),

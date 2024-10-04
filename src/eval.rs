@@ -300,7 +300,7 @@ impl Evaluator {
                 } else {
                     Ok((func_args, func_body))
                 }
-            },
+            }
             Some(func_def) => Err(RuntimeError::MalformedFunction(func_def.clone())),
             None => Err(RuntimeError::UndefinedSymbol),
         }?;
