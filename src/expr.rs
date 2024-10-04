@@ -72,8 +72,6 @@ impl Expr {
             [Token::LeftParen, tail @ ..] => Self::parse_application(tail),
             [Token::SingleQuote, tail @ ..] => Self::parse_compact_quote(tail),
             [Token::RightParen, ..] => Err(ParseError::Generic),
-            // The more compact syntax for (quote _) is surprisingly subtle. 'x
-            // is equivalent to (quoted x), but '(x) is (quoted x).
             [] => Err(ParseError::NoToken),
         }
     }
