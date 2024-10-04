@@ -415,9 +415,9 @@ mod tests {
     #[test]
     fn test_eval_func_malformed() {
         let mut evaluator = Evaluator::new();
-        assert_matches!(evaluator.eval("(def f (quote (add x 1)))"), Ok(Expr::Nil));
+        assert_matches!(evaluator.eval("(def f (quote x) (add x 1))"), Ok(Expr::Nil));
         assert_matches!(
-            evaluator.eval("(f 42)"),
+            evaluator.eval("(f)"),
             Err(RuntimeError::MalformedFunction(_))
         );
     }
@@ -426,7 +426,7 @@ mod tests {
     fn test_eval_func() {
         let mut evaluator = Evaluator::new();
         assert_matches!(
-            evaluator.eval("(def f (quote (quote x) (add x 1)))"),
+            evaluator.eval("(def f (quote x) (add x 1)))"),
             Ok(Expr::Nil)
         );
         assert_matches!(evaluator.eval("(f 42)"), Ok(Expr::Int(43)));
@@ -436,7 +436,7 @@ mod tests {
     fn test_eval_func_evaluates_args() {
         let mut evaluator = Evaluator::new();
         assert_matches!(
-            evaluator.eval("(def dbl (quote (quote x) (add x x)))"),
+            evaluator.eval("(def dbl (quote x) (add x x))"),
             Ok(Expr::Nil)
         );
         assert_matches!(evaluator.eval("(dbl (dbl 5))"), Ok(Expr::Int(20)));
