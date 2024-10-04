@@ -10,9 +10,7 @@ pub enum RuntimeError {
     Unaddable,
     UndefinedSymbol,
     CarEmpty,
-    UnknownFunction(String),
     MalformedFunction(Expr),
-    MalformedFunctionArg(Expr),
     WrongType {
         func: &'static str,
         want: &'static str,
@@ -33,9 +31,7 @@ impl Display for RuntimeError {
             RuntimeError::Unaddable => write!(f, "Unaddable"),
             RuntimeError::UndefinedSymbol => write!(f, "Undefined symbol"),
             RuntimeError::CarEmpty => write!(f, "Car called on empty"),
-            RuntimeError::UnknownFunction(s) => write!(f, "Unknown function {}", s),
             RuntimeError::MalformedFunction(s) => write!(f, "Malformed function {}", s),
-            RuntimeError::MalformedFunctionArg(s) => write!(f, "Malformed function arg {}", s),
             RuntimeError::WrongType { func, want, got } => {
                 write!(f, "{func} wanted a value of type {want}, but got {got}")
             }
@@ -76,15 +72,15 @@ impl Evaluator {
             Expr::Application(boxed_expr, args) => match boxed_expr.as_ref() {
                 Expr::Symbol(func_name) => match func_name.as_str() {
                     "quote" => Ok(Expr::Quoted(args.clone())),
-                    "cond" => self.builtin_cond(&args),
-                    "print" => self.builtin_print(&args),
-                    "show" => self.builtin_show(&args),
-                    "add" => self.builtin_add(&args),
-                    "sub" => self.builtin_sub(&args),
-                    "car" => self.builtin_car(&args),
-                    "cdr" => self.builtin_cdr(&args),
-                    "cons" => self.builtin_cons(&args),
-                    _ => self.eval_application(func_name, &args),
+                    "cond" => self.builtin_cond(args),
+                    "print" => self.builtin_print(args),
+                    "show" => self.builtin_show(args),
+                    "add" => self.builtin_add(args),
+                    "sub" => self.builtin_sub(args),
+                    "car" => self.builtin_car(args),
+                    "cdr" => self.builtin_cdr(args),
+                    "cons" => self.builtin_cons(args),
+                    _ => self.eval_application(func_name, args),
                 },
                 _ => Err(RuntimeError::Uncallable),
             },
@@ -105,7 +101,7 @@ impl Evaluator {
                 // Evaluate the selector to decide which sub-expression to evaluate.
                 match self.eval_expr(selector)? {
                     Expr::Nil | Expr::Int(0) => self.eval_expr(e2),
-                    Expr::Quoted(xs) if xs.len() == 0 => self.eval_expr(e2),
+                    Expr::Quoted(xs) if xs.is_empty() => self.eval_expr(e2),
                     _ => self.eval_expr(e1),
                 }
             }
@@ -145,7 +141,7 @@ impl Evaluator {
     fn builtin_add(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
         let mut sum = 0;
         for arg in args {
-            match self.eval_expr(&arg)? {
+            match self.eval_expr(arg)? {
                 Expr::Int(n) => {
                     sum += n;
                 }
@@ -187,7 +183,7 @@ impl Evaluator {
                 Some(head) => Ok(head.clone()),
                 _ => Err(RuntimeError::CarEmpty),
             },
-            [e] => match self.eval_expr(&e) {
+            [e] => match self.eval_expr(e) {
                 Ok(quoted @ Expr::Quoted(_)) => {
                     let args = [quoted.clone()];
                     self.builtin_car(&args)
@@ -210,10 +206,10 @@ impl Evaluator {
     fn builtin_cdr(&mut self, args: &[Expr]) -> Result<Expr, RuntimeError> {
         match args {
             [Expr::Quoted(expr)] => match &expr[..] {
-                [_, tail @ ..] => Ok(Expr::Quoted(tail.into_iter().cloned().collect())),
+                [_, tail @ ..] => Ok(Expr::Quoted(tail.to_vec())),
                 _ => Err(RuntimeError::CarEmpty),
             },
-            [e] => match self.eval_expr(&e) {
+            [e] => match self.eval_expr(e) {
                 Ok(quoted @ Expr::Quoted(_)) => {
                     let args = [quoted.clone()];
                     self.builtin_cdr(&args)
@@ -294,7 +290,7 @@ impl Evaluator {
 
         let args_evaluated: Vec<Expr> = args.iter().map(|a| self.eval_expr(a)).try_collect()?;
         let (func_args, func_body) = match self.env.get(func_name) {
-            Some(func_def @ Expr::Def(func_name, func_args, func_body)) => {
+            Some(func_def @ Expr::Def(_func_name, func_args, func_body)) => {
                 if func_args.len() != args.len() {
                     Err(RuntimeError::MalformedFunction(func_def.clone()))
                 } else {

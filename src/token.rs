@@ -44,7 +44,7 @@ impl<'a> Iterator for Tokenizer<'a> {
         let mut chars = self.view.chars();
         match chars.next()? {
             ';' => {
-                if let Some((n, c)) = self
+                if let Some((n, _c)) = self
                     .view
                     .char_indices()
                     .take_while(|(_, c)| *c != '\n')
@@ -73,7 +73,7 @@ impl<'a> Iterator for Tokenizer<'a> {
 
 impl<'a> Tokenizer<'a> {
     pub fn new(s: &str) -> Tokenizer {
-        Tokenizer { view: &s }
+        Tokenizer { view: s }
     }
 
     fn next_num(&mut self) -> Result<Token<'a>, ParseError> {
@@ -95,9 +95,9 @@ impl<'a> Tokenizer<'a> {
             .view
             .char_indices()
             .take_while(|(_, c)| c.is_numeric())
-            .fold(Some((0usize, 0i32)), |acc, (i, c)| {
+            .try_fold((0usize, 0i32), |acc, (i, c)| {
                 let digit: i32 = (c as i32) - ('0' as i32);
-                let (_, value) = acc?;
+                let (_, value) = acc;
                 let value = value.checked_mul(10)?.checked_add(digit)?;
                 Some((i, value))
             })
@@ -163,7 +163,7 @@ impl<'a> Tokenizer<'a> {
 
 impl Token<'_> {
     pub fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
-        Tokenizer::new(&code).collect()
+        Tokenizer::new(code).collect()
     }
 }
 

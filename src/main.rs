@@ -12,7 +12,7 @@ use std::io::Write;
 
 use eval::Evaluator;
 use expr::Expr;
-use token::{Token, Tokenizer};
+use token::Token;
 
 fn main() -> Result<(), String> {
     let mut evaluator = Evaluator::new();
@@ -35,7 +35,7 @@ fn main() -> Result<(), String> {
             let tokens = &stdlib_tokens[last_i..=i];
             last_i = i + 1;
 
-            let expr = Expr::parse(&tokens).map_err(|e| format!("Parse error: {}", e))?;
+            let expr = Expr::parse(tokens).map_err(|e| format!("Parse error: {}", e))?;
             println!("stdlib: {expr}");
             evaluator
                 .eval_expr(&expr)
@@ -72,9 +72,8 @@ fn main() -> Result<(), String> {
 
         // Peek at the first token from stdin.
         let first_token = token::Tokenizer::new(&buffer).next();
-        match first_token {
-            Some(Ok(token::Token::Symbol("quit"))) => return Ok(()),
-            _ => {}
+        if let Some(Ok(token::Token::Symbol("quit"))) = first_token {
+            return Ok(());
         };
 
         // Evaluate and print the string from stdin.
