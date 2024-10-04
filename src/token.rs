@@ -6,6 +6,7 @@ pub enum ParseError {
     Generic,
     NoToken,
     UnterminatedString,
+    UnparsedTokens,
 }
 
 impl Display for ParseError {
@@ -15,6 +16,7 @@ impl Display for ParseError {
             ParseError::Generic => write!(f, "Generic error"),
             ParseError::NoToken => write!(f, "Expected token"),
             ParseError::UnterminatedString => write!(f, "Unterminated string literal"),
+            ParseError::UnparsedTokens => write!(f, "Unparsed tokens remain"),
         }
     }
 }

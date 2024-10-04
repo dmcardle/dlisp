@@ -55,11 +55,11 @@ impl Expr {
 
     pub fn parse(tokens: &[Token]) -> Result<Expr, ParseError> {
         let (expr, tail) = Self::parse_expr(tokens)?;
-        if !tail.is_empty() {
-            // TODO: This should be an error.
-            println!("UNPARSED TAIL: {:?}", tail);
+        if tail.is_empty() {
+            Ok(expr)
+        } else {
+            Err(ParseError::UnparsedTokens)
         }
-        Ok(expr)
     }
 
     fn parse_expr<'a>(tokens: &'a [Token<'a>]) -> Result<(Expr, &'a [Token<'a>]), ParseError> {

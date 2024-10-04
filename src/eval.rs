@@ -421,10 +421,7 @@ mod tests {
     #[test]
     fn test_eval_func() {
         let mut evaluator = Evaluator::new();
-        assert_matches!(
-            evaluator.eval("(def f (quote x) (add x 1)))"),
-            Ok(Expr::Nil)
-        );
+        assert_matches!(evaluator.eval("(def f (quote x) (add x 1))"), Ok(Expr::Nil));
         assert_matches!(evaluator.eval("(f 42)"), Ok(Expr::Int(43)));
     }
 
