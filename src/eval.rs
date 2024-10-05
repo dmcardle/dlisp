@@ -268,7 +268,7 @@ impl Evaluator {
         //
         // Example of a function `f` that adds its two arguments:
         //
-        //     (def f (quote (quote a b) (add a b)))
+        //     (def f (quote a b) (add a b))
         //
         // When we evaluate (f 1 2), we create a new `Evaluator` where `a` is 1
         // and `b` is 2. Then we evaluate the body of `f`, (add a b), in the new
@@ -286,7 +286,7 @@ impl Evaluator {
         //                   (def g (quote (quote) a))))
         //
         // Because we don't have scoping yet, I can't define functions in terms
-        // of other functions.
+        // of other functions unless they're topologically sorted.
 
         let args_evaluated: Vec<Expr> = args.iter().map(|a| self.eval_expr(a)).try_collect()?;
         let (func_args, func_body) = match self.env.get(func_name) {
