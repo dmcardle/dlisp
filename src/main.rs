@@ -17,8 +17,7 @@ use token::Token;
 fn main() -> Result<(), String> {
     let mut evaluator = Evaluator::new();
 
-    // TODO: Figure out how to support multi-line expressions.
-    let stdlib = std::include_bytes!("../stdlib.dl");
+    let stdlib = std::include_bytes!("../stdlib.lisp");
     let stdlib = std::str::from_utf8(stdlib).expect("stdlib must be utf-8");
     let stdlib_tokens = Token::lex(stdlib).map_err(|e| e.to_string())?;
 
