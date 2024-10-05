@@ -1,3 +1,4 @@
+#![feature(box_patterns)]
 #![feature(custom_inner_attributes)]
 #![feature(stmt_expr_attributes)]
 #![feature(test)]

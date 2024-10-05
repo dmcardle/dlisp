@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use crate::{expr::Expr, token};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum RuntimeError {
     ParseError(token::ParseError),
     Uncallable,
@@ -59,9 +59,14 @@ impl Evaluator {
 
     pub fn eval_expr(&mut self, expr: &Expr) -> Result<Expr, RuntimeError> {
         match expr {
-            Expr::Nil | Expr::True | Expr::Int(_) | Expr::String(_) | Expr::Quoted(_) => {
-                Ok(expr.clone())
-            }
+            Expr::Nil | Expr::True | Expr::Int(_) | Expr::String(_) => Ok(expr.clone()),
+            Expr::Quoted(exprs) => match exprs.as_slice() {
+                // Evaluating a quoted expression yields strips the quoting.
+                [expr] => Ok(expr.clone()),
+                // Evaluating zero or multiple expressions wrapped in a quote is
+                // a no-op.
+                _ => Ok(expr.clone()),
+            },
             Expr::Symbol(symbol) => {
                 if let Some(value) = self.env.get(symbol) {
                     Ok(value.clone())
@@ -85,20 +90,16 @@ impl Evaluator {
                 _ => Err(RuntimeError::Uncallable),
             },
             Expr::Def(name, _, _) => {
-                if let Expr::Nil = expr {
-                    self.env.remove(name);
-                } else {
-                    self.env.insert(name.to_string(), expr.clone());
-                }
+                self.env.insert(name.to_string(), expr.clone());
+                Ok(Expr::Nil)
+            }
+            Expr::Set(name, box Expr::Nil) => {
+                self.env.remove(name);
                 Ok(Expr::Nil)
             }
             Expr::Set(name, value) => {
-                if let Expr::Nil = expr {
-                    self.env.remove(name);
-                } else {
-                    let value = self.eval_expr(value)?;
-                    self.env.insert(name.to_string(), value);
-                }
+                let value = self.eval_expr(value)?;
+                self.env.insert(name.to_string(), value);
                 Ok(Expr::Nil)
             }
         }
@@ -444,6 +445,21 @@ mod tests {
         assert_matches!(evaluator.eval("(dbl (dbl 5))"), Ok(Expr::Int(20)));
     }
 
+    #[test]
+    fn test_eval_quote() {
+        let mut evaluator = Evaluator::new();
+        assert_matches!(evaluator.eval("(def x 123)"), Ok(Expr::Nil));
+        assert_eq!(
+            evaluator.eval("(quote (quote x))"),
+            Ok(Expr::Quoted(vec![Expr::Symbol("x".to_string())]))
+        );
+        assert_eq!(
+            evaluator.eval("(quote x)"),
+            Ok(Expr::Symbol("x".to_string()))
+        );
+        assert_matches!(evaluator.eval("x"), Ok(Expr::Int(123)));
+    }
+
     // Test that `def` can be used without a parameter list to map a symbol to a
     // literal in the environment.
     #[test]
@@ -458,5 +474,20 @@ mod tests {
         let mut evaluator = Evaluator::new();
         assert_matches!(evaluator.eval("(def x (add 1 2))"), Ok(Expr::Nil));
         assert_matches!(evaluator.eval("x"), Ok(Expr::Int(3)));
+    }
+
+    #[test]
+    fn test_def_unset() {
+        let mut evaluator = Evaluator::new();
+        assert_matches!(evaluator.eval("(def x 42)"), Ok(Expr::Nil));
+        assert_matches!(evaluator.eval("x"), Ok(Expr::Int(42)));
+
+        // Setting x to nil should remove it from the environment.
+        assert_matches!(evaluator.eval("(def x nil)"), Ok(Expr::Nil));
+        assert_matches!(evaluator.eval("x"), Err(RuntimeError::UndefinedSymbol));
+
+        // Setting x to 'nil should actually assign the value of nil to x.
+        assert_matches!(evaluator.eval("(def x 'nil)"), Ok(Expr::Nil));
+        assert_matches!(evaluator.eval("x"), Ok(Expr::Nil));
     }
 }
