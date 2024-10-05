@@ -12,7 +12,8 @@ pub enum Expr {
     Symbol(String),
     Application(Box<Expr>, Vec<Expr>),
     Quoted(Vec<Expr>),
-    Def(String, Vec<String>, Box<Expr>),
+    Def(String, Vec<String>, Box<Expr>), // Defines a function
+    Set(String, Box<Expr>),              // Defines a variable
 }
 
 impl Display for Expr {
@@ -37,6 +38,7 @@ impl Display for Expr {
                 "(def {name} '({}) {expr})",
                 String::from_iter(args.iter().map(|a| format!(" {}", a)))
             ),
+            Expr::Set(name, expr) => write!(f, "(def {name} {expr})"),
         }
     }
 }
@@ -127,6 +129,9 @@ impl Expr {
                             Ok((quoted, tail))
                         }
                         "def" => match right.as_slice() {
+                            [Expr::Symbol(name), expr] => {
+                                Ok((Expr::Set(name.clone(), Box::new(expr.clone())), tail))
+                            }
                             [Expr::Symbol(func_name), Expr::Quoted(func_args), body] => {
                                 // Turn the quoted symbols into a list of strings.
                                 let func_arg_names: Vec<String> = func_args

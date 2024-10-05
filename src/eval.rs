@@ -92,6 +92,15 @@ impl Evaluator {
                 }
                 Ok(Expr::Nil)
             }
+            Expr::Set(name, value) => {
+                if let Expr::Nil = expr {
+                    self.env.remove(name);
+                } else {
+                    let value = self.eval_expr(value)?;
+                    self.env.insert(name.to_string(), value);
+                }
+                Ok(Expr::Nil)
+            }
         }
     }
 
@@ -433,5 +442,21 @@ mod tests {
             Ok(Expr::Nil)
         );
         assert_matches!(evaluator.eval("(dbl (dbl 5))"), Ok(Expr::Int(20)));
+    }
+
+    // Test that `def` can be used without a parameter list to map a symbol to a
+    // literal in the environment.
+    #[test]
+    fn test_def_unary_literal() {
+        let mut evaluator = Evaluator::new();
+        assert_matches!(evaluator.eval("(def x 123)"), Ok(Expr::Nil));
+        assert_matches!(evaluator.eval("x"), Ok(Expr::Int(123)));
+    }
+
+    #[test]
+    fn test_def_unary_expr() {
+        let mut evaluator = Evaluator::new();
+        assert_matches!(evaluator.eval("(def x (add 1 2))"), Ok(Expr::Nil));
+        assert_matches!(evaluator.eval("x"), Ok(Expr::Int(3)));
     }
 }
