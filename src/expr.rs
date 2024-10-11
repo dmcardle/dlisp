@@ -45,7 +45,8 @@ impl Display for Expr {
 
 impl Expr {
     pub fn parse_str(code: &str) -> Result<Expr, ParseError> {
-        let tokens: Vec<Token> = Token::lex(code)?;
+        let tokens: Vec<Token> =
+            Token::lex(code).map_err(|err| ParseError::TokenizationErr(err.to_string()))?;
         // The given `code` would yield zero tokens if it's empty or only
         // contains a comment.
         if tokens.is_empty() {

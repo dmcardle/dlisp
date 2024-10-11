@@ -1,21 +1,31 @@
 use std::fmt::Display;
 
 #[derive(Debug, PartialEq)]
+pub struct TokenizationError<'a> {
+    pub message: &'static str,
+    pub context: &'a str,
+}
+
+impl Display for TokenizationError<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Tokenization error {}: {}", self.message, self.context)
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ParseError {
-    ParseNum,
+    TokenizationErr(String),
     Generic,
     NoToken,
-    UnterminatedString,
     UnparsedTokens,
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::ParseNum => write!(f, "Error parsing number"),
+            ParseError::TokenizationErr(s) => write!(f, "Tokenization error {s}"),
             ParseError::Generic => write!(f, "Generic error"),
             ParseError::NoToken => write!(f, "Expected token"),
-            ParseError::UnterminatedString => write!(f, "Unterminated string literal"),
             ParseError::UnparsedTokens => write!(f, "Unparsed tokens remain"),
         }
     }
@@ -39,7 +49,7 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Iterator for Tokenizer<'a> {
-    type Item = Result<Token<'a>, ParseError>;
+    type Item = Result<Token<'a>, TokenizationError<'a>>;
 
     /// Yield the next token result.
     fn next(&mut self) -> Option<Self::Item> {
@@ -78,7 +88,14 @@ impl<'a> Tokenizer<'a> {
         Tokenizer { view: s }
     }
 
-    fn next_num(&mut self) -> Result<Token<'a>, ParseError> {
+    fn make_err(&self, message: &'static str) -> TokenizationError<'a> {
+        return TokenizationError {
+            context: self.view,
+            message,
+        };
+    }
+
+    fn next_num(&mut self) -> Result<Token<'a>, TokenizationError<'a>> {
         // Determine whether the number is negative.
         let mut char_indices = self.view.char_indices();
         let is_negative = match (char_indices.next(), char_indices.next()) {
@@ -88,8 +105,12 @@ impl<'a> Tokenizer<'a> {
                 self.view = &self.view[j..];
                 true
             }
-            (Some((_, '-')), Some((_, '-'))) => return Err(ParseError::ParseNum),
-            (Some((_, '-')), Some((_, _))) => return Err(ParseError::ParseNum),
+            (Some((_, '-')), Some((_, '-'))) => {
+                return Err(self.make_err("double negation"));
+            }
+            (Some((_, '-')), Some((_, _))) => {
+                return Err(self.make_err("negation of non-numeric"));
+            }
             _ => false,
         };
         // Parse a number composed of digits.
@@ -103,7 +124,7 @@ impl<'a> Tokenizer<'a> {
                 let value = value.checked_mul(10)?.checked_add(digit)?;
                 Some((i, value))
             })
-            .ok_or(ParseError::ParseNum)?;
+            .ok_or(self.make_err("failed to parse number"))?;
         // After parsing the number, consume all of its constituent characters.
         // Adding one to the index is safe because numeric characters are ASCII,
         // and thus take up a single byte.
@@ -112,7 +133,7 @@ impl<'a> Tokenizer<'a> {
         Ok(Token::Num(if is_negative { -value } else { value }))
     }
 
-    fn next_string(&mut self) -> Result<Token<'a>, ParseError> {
+    fn next_string(&mut self) -> Result<Token<'a>, TokenizationError<'a>> {
         // Proceed until we find the ending quote.
         let (i_end, is_escaping) =
             self.view
@@ -143,18 +164,18 @@ impl<'a> Tokenizer<'a> {
                 self.view = &self.view[i + 1..];
                 Ok(Token::String(body))
             }
-            _ => Err(ParseError::UnterminatedString),
+            _ => Err(self.make_err("failed to parse string")),
         }
     }
 
-    fn next_symbol(&mut self) -> Result<Token<'a>, ParseError> {
+    fn next_symbol(&mut self) -> Result<Token<'a>, TokenizationError<'a>> {
         let len = self
             .view
             .chars()
             .take_while(|&c| c.is_alphanumeric() || c == '_')
             .count();
         if len == 0 {
-            Err(ParseError::NoToken)
+            Err(self.make_err("failed to parse symbol"))
         } else {
             let symbol = &self.view[..len];
             self.view = &self.view[len..];
@@ -163,8 +184,8 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
-impl Token<'_> {
-    pub fn lex(code: &str) -> Result<Vec<Token>, ParseError> {
+impl<'a> Token<'a> {
+    pub fn lex(code: &'a str) -> Result<Vec<Token<'a>>, TokenizationError<'a>> {
         Tokenizer::new(code).collect()
     }
 }
@@ -172,6 +193,7 @@ impl Token<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches::assert_matches;
 
     #[test]
     fn test_lex() {
@@ -221,8 +243,20 @@ mod tests {
         assert_eq!(Token::lex("123"), Ok(vec![Token::Num(123)]));
         assert_eq!(Token::lex("-0"), Ok(vec![Token::Num(0)]));
         assert_eq!(Token::lex("-123"), Ok(vec![Token::Num(-123)]));
-        assert_eq!(Token::lex("--123"), Err(ParseError::ParseNum));
-        assert_eq!(Token::lex("---123"), Err(ParseError::ParseNum));
+        assert_matches!(
+            Token::lex("--123"),
+            Err(TokenizationError {
+                context: "--123",
+                message: "double negation"
+            })
+        );
+        assert_matches!(
+            Token::lex("---123"),
+            Err(TokenizationError {
+                context: "---123",
+                message: "double negation"
+            })
+        );
 
         // TODO: support hexadecimal number literals.
         assert_eq!(
@@ -234,13 +268,25 @@ mod tests {
     #[test]
     fn test_tokenize_num_too_big() {
         let big_num_literal = format!("{}", i32::MAX as i64 + 1);
-        assert_eq!(Token::lex(&big_num_literal), Err(ParseError::ParseNum));
+        assert_matches!(
+            Token::lex(&big_num_literal),
+            Err(TokenizationError {
+                context: _,
+                message: _
+            })
+        );
     }
 
     #[test]
     fn test_tokenize_num_too_small() {
         let small_num_literal = format!("{}", i32::MIN as i64 - 1);
-        assert_eq!(Token::lex(&small_num_literal), Err(ParseError::ParseNum));
+        assert_matches!(
+            Token::lex(&small_num_literal),
+            Err(TokenizationError {
+                context: _,
+                message: _
+            })
+        );
     }
 
     #[test]
@@ -257,20 +303,20 @@ mod tests {
         // Multi-character strings with no spaces.
         assert_eq!(Token::lex("\"foo\""), Ok(vec![Token::String("foo")]));
         // Unterminated string literals.
-        assert_eq!(Token::lex("\""), Err(ParseError::UnterminatedString));
-        assert_eq!(Token::lex("\"foo"), Err(ParseError::UnterminatedString));
+        assert_matches!(Token::lex("\""), Err(_));
+        assert_matches!(Token::lex("\"foo"), Err(_));
     }
 
     #[test]
     fn test_tokenize_string_escaping() {
-        assert_eq!(Token::lex("\""), Err(ParseError::UnterminatedString));
-        assert_eq!(Token::lex("\"\\"), Err(ParseError::UnterminatedString));
-        assert_eq!(Token::lex("\"foo\\\""), Err(ParseError::UnterminatedString));
+        assert_matches!(Token::lex("\""), Err(_));
+        assert_matches!(Token::lex("\"\\"), Err(_));
+        assert_matches!(Token::lex("\"foo\\\""), Err(_));
         assert_eq!(
             Token::lex("\"foo\\\"\""),
             Ok(vec![Token::String("foo\\\"")])
         );
-        assert_eq!(Token::lex(r#""\\\""#), Err(ParseError::UnterminatedString));
+        assert_matches!(Token::lex(r#""\\\""#), Err(_));
         assert_eq!(Token::lex(r#""\\\\""#), Ok(vec![Token::String(r#"\\\\"#)]));
     }
 
