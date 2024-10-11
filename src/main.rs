@@ -9,6 +9,7 @@ mod eval;
 mod expr;
 mod token;
 
+use std::env;
 use std::io::Write;
 
 use eval::Evaluator;
@@ -20,33 +21,52 @@ fn main() -> Result<(), String> {
 
     let stdlib = std::include_bytes!("../stdlib.lisp");
     let stdlib = std::str::from_utf8(stdlib).expect("stdlib must be utf-8");
-    let stdlib_tokens = Token::lex(stdlib).map_err(|e| e.to_string())?;
+    load(&mut evaluator, stdlib)?;
 
-    let mut last_i = 0;
-    let mut depth = 0;
-    for (i, t) in stdlib_tokens.iter().enumerate() {
-        match &t {
-            Token::LeftParen => depth += 1,
-            Token::RightParen => depth -= 1,
-            _ => {}
-        };
-        if depth == 0 {
-            // Select the tokens for a single expr.
-            let tokens = &stdlib_tokens[last_i..=i];
-            last_i = i + 1;
+    let mut args = env::args();
+    let _command = args
+        .next()
+        .ok_or("expected first arg to be path to dlisp")?;
 
-            let expr = Expr::parse(tokens).map_err(|e| format!("Parse error: {}", e))?;
-            println!("stdlib: {expr}");
-            evaluator
-                .eval_expr(&expr)
-                .map_err(|e| format!("Eval error: {}", e))?;
+    let args_tail: Vec<String> = args.collect();
+    match &args_tail[..] {
+        // When there are no args, run the REPL.
+        [] => repl(evaluator),
+
+        // The first arg should be a path to a file containing some dlisp code.
+        // Load and run the code!
+        [src_path, remaining_args @ ..] => {
+            let code = std::fs::read_to_string(src_path).map_err(|x| x.to_string())?;
+            load(&mut evaluator, &code)?;
+
+            // When the script defined a function named "main", synthesize a
+            // call to the function that passes along this program's argv.
+            if let Some(Expr::Def(..)) = evaluator.env.get("main") {
+                let target = Box::new(Expr::Symbol("main".to_string()));
+                let quoted_argv = Expr::Quoted(
+                    remaining_args
+                        .iter()
+                        .map(|s| Expr::String(s.clone()))
+                        .collect(),
+                );
+                let call_main_expr = Expr::Application(target, vec![quoted_argv]);
+
+                evaluator
+                    .eval_expr(&call_main_expr)
+                    .map_err(|e| e.to_string())?;
+            }
+
+            Ok(())
         }
     }
-    if depth > 0 {
-        return Err(String::from("Unterminated expression in stdlib."));
-    }
+}
 
-    repl(evaluator)
+fn load(evaluator: &mut Evaluator, code: &str) -> Result<(), String> {
+    let tokens = Token::lex(code).map_err(|e| e.to_string())?;
+    let _ = evaluator
+        .eval_tokens(&tokens)
+        .map_err(|err| format!("Error: {err}"))?;
+    Ok(())
 }
 
 fn repl(mut evaluator: Evaluator) -> Result<(), String> {

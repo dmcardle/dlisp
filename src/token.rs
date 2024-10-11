@@ -89,10 +89,10 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn make_err(&self, message: &'static str) -> TokenizationError<'a> {
-        return TokenizationError {
+        TokenizationError {
             context: self.view,
             message,
-        };
+        }
     }
 
     fn next_num(&mut self) -> Result<Token<'a>, TokenizationError<'a>> {

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use crate::{expr::Expr, token};
+use crate::{
+    expr::Expr,
+    token::{self, Token},
+};
 
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
@@ -62,9 +65,36 @@ impl Evaluator {
             env: HashMap::new(),
         }
     }
+
     pub fn eval(&mut self, code: &str) -> Result<Expr, RuntimeError> {
         let expr = Expr::parse_str(code).map_err(RuntimeError::ParseError)?;
         self.eval_expr(&expr)
+    }
+
+    pub fn eval_tokens(&mut self, tokens: &[Token]) -> Result<Expr, RuntimeError> {
+        let mut last_i = 0;
+        let mut depth = 0;
+        for (i, t) in tokens.iter().enumerate() {
+            match &t {
+                Token::LeftParen => depth += 1,
+                Token::RightParen => depth -= 1,
+                _ => {}
+            };
+            if depth == 0 {
+                // Select the tokens for a single expr.
+                let tokens = &tokens[last_i..=i];
+                last_i = i + 1;
+
+                let expr = Expr::parse(tokens).map_err(RuntimeError::ParseError)?;
+                println!("stdlib: {expr}");
+                self.eval_expr(&expr)?;
+            }
+        }
+        if depth > 0 {
+            return Err(RuntimeError::ParseError(token::ParseError::UnparsedTokens));
+        }
+
+        Ok(Expr::Nil)
     }
 
     pub fn eval_expr(&mut self, expr: &Expr) -> Result<Expr, RuntimeError> {
@@ -327,7 +357,10 @@ impl Evaluator {
                 }
             }
             Some(func_def) => Err(RuntimeError::MalformedFunction(func_def.clone())),
-            None => Err(RuntimeError::UndefinedSymbol),
+            None => {
+                println!("&&&&& A {func_name}");
+                Err(RuntimeError::UndefinedSymbol)
+            }
         }?;
 
         let mut evaluator = Evaluator::new();
