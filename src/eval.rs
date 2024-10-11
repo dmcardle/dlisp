@@ -6,6 +6,7 @@ use crate::{expr::Expr, token};
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
     ParseError(token::ParseError),
+    Todo(String),
     Uncallable,
     Unaddable,
     UndefinedSymbol,
@@ -21,12 +22,18 @@ pub enum RuntimeError {
         want: usize,
         got: usize,
     },
+    WrongArgs {
+        func: &'static str,
+        want: &'static str,
+        got: Expr,
+    },
 }
 
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RuntimeError::ParseError(e) => write!(f, "ParseError {}", e),
+            RuntimeError::Todo(msg) => write!(f, "TODO {msg}"),
             RuntimeError::Uncallable => write!(f, "Uncallable"),
             RuntimeError::Unaddable => write!(f, "Unaddable"),
             RuntimeError::UndefinedSymbol => write!(f, "Undefined symbol"),
@@ -37,6 +44,9 @@ impl Display for RuntimeError {
             }
             RuntimeError::WrongNumArgs { func, want, got } => {
                 write!(f, "{func} wanted {want} args, but got {got}")
+            }
+            RuntimeError::WrongArgs { func, want, got } => {
+                write!(f, "{func} wanted {want}, but got {got}")
             }
         }
     }
@@ -74,7 +84,7 @@ impl Evaluator {
                     Err(RuntimeError::UndefinedSymbol)
                 }
             }
-            Expr::Application(boxed_expr, args) => match boxed_expr.as_ref() {
+            Expr::Application(boxed_expr, args) => match *boxed_expr.to_owned() {
                 Expr::Symbol(func_name) => match func_name.as_str() {
                     "quote" => Ok(Expr::Quoted(args.clone())),
                     "cond" => self.builtin_cond(args),
@@ -85,7 +95,16 @@ impl Evaluator {
                     "car" => self.builtin_car(args),
                     "cdr" => self.builtin_cdr(args),
                     "cons" => self.builtin_cons(args),
-                    _ => self.eval_application(func_name, args),
+                    "todo" => Err(if let [Expr::String(msg)] = &args[..] {
+                        RuntimeError::Todo(msg.clone())
+                    } else {
+                        RuntimeError::WrongArgs {
+                            func: "todo",
+                            want: "one string",
+                            got: Expr::Quoted(args.to_vec()),
+                        }
+                    }),
+                    _ => self.eval_application(&func_name, args),
                 },
                 _ => Err(RuntimeError::Uncallable),
             },
@@ -489,5 +508,14 @@ mod tests {
         // Setting x to 'nil should actually assign the value of nil to x.
         assert_matches!(evaluator.eval("(def x 'nil)"), Ok(Expr::Nil));
         assert_matches!(evaluator.eval("x"), Ok(Expr::Nil));
+    }
+
+    #[test]
+    fn test_todo() {
+        let mut evaluator = Evaluator::new();
+        assert_eq!(
+            evaluator.eval("(todo \"foo the bar\")"),
+            Err(RuntimeError::Todo("foo the bar".to_string()))
+        );
     }
 }
