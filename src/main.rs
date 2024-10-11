@@ -28,14 +28,24 @@ fn main() -> Result<(), String> {
         .next()
         .ok_or("expected first arg to be path to dlisp")?;
 
-    let args_tail: Vec<String> = args.collect();
-    match &args_tail[..] {
-        // When there are no args, run the REPL.
-        [] => repl(evaluator),
+    match args.next() {
+        None => repl(evaluator),
+        Some(help) if help == "-h" || help == "--help" => {
+            let description = std::include_str!("../README.md");
+            println!("{description}");
 
-        // The first arg should be a path to a file containing some dlisp code.
-        // Load and run the code!
-        [src_path, remaining_args @ ..] => {
+            println!(
+                "Usage:
+
+    dlisp [SOURCE [ARGS...]]
+    dlisp (-h | --help)
+"
+            );
+            Ok(())
+        }
+        Some(src_path) => {
+            let remaining_args: Vec<String> = args.collect();
+
             let code = std::fs::read_to_string(src_path).map_err(|x| x.to_string())?;
             load(&mut evaluator, &code)?;
 
@@ -63,9 +73,7 @@ fn main() -> Result<(), String> {
 
 fn load(evaluator: &mut Evaluator, code: &str) -> Result<(), String> {
     let tokens = Token::lex(code).map_err(|e| e.to_string())?;
-    let _ = evaluator
-        .eval_tokens(&tokens)
-        .map_err(|err| format!("Error: {err}"))?;
+    let _ = eval_tokens(evaluator, &tokens).map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -108,4 +116,31 @@ fn repl(mut evaluator: Evaluator) -> Result<(), String> {
             Err(err) => println!("! {}", err),
         }
     }
+}
+
+fn eval_tokens(evaluator: &mut Evaluator, tokens: &[Token]) -> Result<Expr, String> {
+    let mut last_i = 0;
+    let mut depth = 0;
+    for (i, t) in tokens.iter().enumerate() {
+        match &t {
+            Token::LeftParen => depth += 1,
+            Token::RightParen => depth -= 1,
+            _ => {}
+        };
+        if depth == 0 {
+            // Select the tokens for a single expr.
+            let tokens = &tokens[last_i..=i];
+            last_i = i + 1;
+
+            let expr = Expr::parse(tokens).map_err(|err| err.to_string())?;
+            evaluator.eval_expr(&expr).map_err(|err| err.to_string())?;
+        }
+    }
+    if depth > 0 {
+        return Err(format!(
+            "Evaluator is at depth {depth}; some tokens must be missing"
+        ));
+    }
+
+    Ok(Expr::Nil)
 }
