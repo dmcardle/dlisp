@@ -46,6 +46,10 @@ fn main() -> Result<(), String> {
         return Err(String::from("Unterminated expression in stdlib."));
     }
 
+    repl(evaluator)
+}
+
+fn repl(mut evaluator: Evaluator) -> Result<(), String> {
     // The prompt must be non-empty because we do not print nil results.
     // Printing the prompt tells the user implicitly that their expression was
     // evaluated.
