@@ -31,6 +31,12 @@ impl Display for ParseError {
     }
 }
 
+impl From<TokenizationError<'_>> for ParseError {
+    fn from(err: TokenizationError) -> Self {
+        ParseError::TokenizationErr(err.to_string())
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Token<'a> {
     Num(i32),

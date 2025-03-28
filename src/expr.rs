@@ -45,23 +45,18 @@ impl Display for Expr {
 
 impl Expr {
     pub fn parse_str(code: &str) -> Result<Expr, ParseError> {
-        let tokens: Vec<Token> =
-            Token::lex(code).map_err(|err| ParseError::TokenizationErr(err.to_string()))?;
-        // The given `code` would yield zero tokens if it's empty or only
-        // contains a comment.
-        if tokens.is_empty() {
-            Ok(Expr::Nil)
-        } else {
-            Expr::parse(&tokens)
+        let tokens = Token::lex(code).map_err(ParseError::from)?;
+        match &tokens[..] {
+            [] => Ok(Expr::Nil),
+            tokens => Expr::parse(tokens),
         }
     }
 
     pub fn parse(tokens: &[Token]) -> Result<Expr, ParseError> {
         let (expr, tail) = Self::parse_expr(tokens)?;
-        if tail.is_empty() {
-            Ok(expr)
-        } else {
-            Err(ParseError::UnparsedTokens)
+        match tail {
+            [] => Ok(expr),
+            _ => Err(ParseError::UnparsedTokens),
         }
     }
 

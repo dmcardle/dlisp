@@ -24,48 +24,46 @@ fn main() -> Result<(), String> {
     load(&mut evaluator, stdlib)?;
 
     let mut args = env::args();
-    let _command = args
-        .next()
+
+    args.next()
         .ok_or("expected first arg to be path to dlisp")?;
 
     match args.next() {
         None => repl(evaluator),
+
         Some(help) if help == "-h" || help == "--help" => {
-            let description = std::include_str!("../README.md");
-            println!("{description}");
-
+            let description = std::include_str!("../README.md").trim_end();
             println!(
-                "Usage:
+                "{description}
 
-    dlisp [SOURCE [ARGS...]]
-    dlisp (-h | --help)
-"
+Usage: dlisp [SOURCE [ARGS...]]
+       dlisp (-h | --help)"
             );
             Ok(())
         }
+
         Some(src_path) => {
             let remaining_args: Vec<String> = args.collect();
 
             let code = std::fs::read_to_string(src_path).map_err(|x| x.to_string())?;
             load(&mut evaluator, &code)?;
 
-            // When the script defined a function named "main", synthesize a
-            // call to the function that passes along this program's argv.
-            if let Some(Expr::Def(..)) = evaluator.env.get("main") {
-                let target = Box::new(Expr::Symbol("main".to_string()));
-                let quoted_argv = Expr::Quoted(
+            // If the script defined a function named "main", that will be our
+            // entry point. Synthesize a call to `main` and pass any remaining
+            // command-line arguments.
+            const MAIN: &str = "main";
+            if let Some(Expr::Def(..)) = evaluator.env.get(MAIN) {
+                let main = Expr::Symbol(MAIN.into());
+                let args = Expr::Quoted(
                     remaining_args
                         .iter()
                         .map(|s| Expr::String(s.clone()))
                         .collect(),
                 );
-                let call_main_expr = Expr::Application(target, vec![quoted_argv]);
-
                 evaluator
-                    .eval_expr(&call_main_expr)
+                    .eval_expr(&Expr::Application(main.into(), vec![args]))
                     .map_err(|e| e.to_string())?;
             }
-
             Ok(())
         }
     }
