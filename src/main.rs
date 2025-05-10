@@ -81,8 +81,6 @@ fn repl(mut evaluator: Evaluator) -> Result<(), String> {
     // evaluated.
     const PROMPT: &str = "::: ";
 
-    println!("{}", PROMPT);
-
     loop {
         print!("{}", PROMPT);
         if std::io::stdout().flush().is_err() {

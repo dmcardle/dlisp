@@ -2,10 +2,7 @@
 ;;;; The DLISP standard library.
 ;;;;
 
-(print "OK")
-
 (def id '(x) x)
-(print (show (id 42)))
 
 (def not '(p) (cond p nil true))
 (def and '(p q) (cond p q p))
