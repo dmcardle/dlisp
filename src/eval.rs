@@ -343,7 +343,9 @@ impl Evaluator {
             evaluator.env.insert(func_arg_name.clone(), arg);
         }
 
-        evaluator.eval_expr(func_body)
+        func_body
+            .iter()
+            .try_fold(Expr::Nil, |_acc, e| evaluator.eval_expr(e))
     }
 }
 
@@ -524,5 +526,15 @@ mod tests {
             evaluator.eval("(todo \"foo the bar\")"),
             Err(RuntimeError::Todo("foo the bar".to_string()))
         );
+    }
+
+    #[test]
+    fn test_progn() {
+        let mut evaluator = Evaluator::new();
+        assert_eq!(
+            evaluator.eval("(def f '() (def x 1) (def y 2) (add x y))"),
+            Ok(Expr::Nil)
+        );
+        assert_eq!(evaluator.eval("(f)"), Ok(Expr::Int(3)));
     }
 }

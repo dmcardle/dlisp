@@ -12,7 +12,7 @@ pub enum Expr {
     Symbol(String),
     Application(Box<Expr>, Vec<Expr>),
     Quoted(Vec<Expr>),
-    Def(String, Vec<String>, Box<Expr>), // Defines a function
+    Def(String, Vec<String>, Vec<Expr>), // Defines a function
     Set(String, Box<Expr>),              // Defines a variable
 }
 
@@ -35,8 +35,9 @@ impl Display for Expr {
             ),
             Expr::Def(name, args, expr) => write!(
                 f,
-                "(def {name} '({}) {expr})",
-                String::from_iter(args.iter().map(|a| format!(" {}", a)))
+                "(def {name} '({}) {})",
+                String::from_iter(args.iter().map(|a| format!(" {}", a))),
+                String::from_iter(expr.iter().map(|a| format!(" {}", a)))
             ),
             Expr::Set(name, expr) => write!(f, "(def {name} {expr})"),
         }
@@ -125,10 +126,12 @@ impl Expr {
                             Ok((quoted, tail))
                         }
                         "def" => match right.as_slice() {
+                            // Immediately set a symbol to an expression.
                             [Expr::Symbol(name), expr] => {
                                 Ok((Expr::Set(name.clone(), Box::new(expr.clone())), tail))
                             }
-                            [Expr::Symbol(func_name), Expr::Quoted(func_args), body] => {
+                            // Define a named function.
+                            [Expr::Symbol(func_name), Expr::Quoted(func_args), body @ ..] => {
                                 // Turn the quoted symbols into a list of strings.
                                 let func_arg_names: Vec<String> = func_args
                                     .iter()
@@ -142,7 +145,7 @@ impl Expr {
                                 let definition = Expr::Def(
                                     func_name.to_string(),
                                     func_arg_names,
-                                    Box::new(body.clone()),
+                                    Vec::from(body),
                                 );
                                 Ok((definition, tail))
                             }
@@ -271,21 +274,26 @@ mod tests {
             Expr::parse_str("(def bool   (quote (quote p) (not (not p))))"),
             Expr::parse_str("(def bool   '( 'p (not (not p))))"),
         );
+    }
 
-        //     let x = Ok(Def(
-        //         "bool",
-        //         Quoted([
-        //             Quoted([Symbol("p")]),
-        //             Application(Symbol("not"), [Application(Symbol("not"), [Symbol("p")])]),
-        //         ]),
-        //     ));
+    #[test]
+    fn test_def_body_many_exprs() {
+        use Expr::*;
 
-        //     let y = Ok(Def(
-        //         "bool",
-        //         Quoted([Quoted([
-        //             Symbol("p"),
-        //             Application(Symbol("not"), [Application(Symbol("not"), [Symbol("p")])]),
-        //         ])]),
-        //     ));
+        assert_eq!(
+            Expr::parse_str("(def f '() (def x 1) (def y 2) (add x y))"),
+            Ok(Def(
+                "f".to_string(),
+                Vec::new(),
+                vec![
+                    Set("x".to_string(), Box::new(Int(1))),
+                    Set("y".to_string(), Box::new(Int(2))),
+                    Application(
+                        Box::new(Symbol("add".to_string())),
+                        vec![Symbol("x".to_string()), Symbol("y".to_string())]
+                    )
+                ]
+            ))
+        );
     }
 }
