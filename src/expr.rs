@@ -151,13 +151,22 @@ impl Expr {
                             }
                             _ => Err(ParseError::Generic),
                         },
+                        // When we don't recognize the function name, just emit
+                        // a generic function application.
                         _ => {
                             let application =
                                 Expr::Application(Box::new(Expr::Symbol(symbol)), right);
                             Ok((application, tail))
                         }
                     },
-                    _ => Err(ParseError::Generic),
+                    // When this looks like a function application, but the
+                    // left-hand side is not a symbol, take the conservative
+                    // choice and proceed. It will be the evaluator's job to
+                    // determine whether it's uncallable.
+                    _ => {
+                        let application = Expr::Application(Box::new(left), vec![]);
+                        Ok((application, tail))
+                    }
                 }
             }
             _ => Err(ParseError::Generic),

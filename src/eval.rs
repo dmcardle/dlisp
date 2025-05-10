@@ -110,7 +110,12 @@ impl Evaluator {
                     }),
                     _ => self.eval_application(&func_name, args),
                 },
-                _ => Err(RuntimeError::Uncallable),
+                expr => match self.eval_expr(&expr)? {
+                    Expr::Def(_func_name, func_args, func_body) => {
+                        self.eval_func(&func_args, args, &func_body)
+                    }
+                    _ => Err(RuntimeError::Uncallable),
+                },
             },
             Expr::Def(name, _, _) => {
                 self.env.insert(name.to_string(), expr.clone());
@@ -334,10 +339,19 @@ impl Evaluator {
             None => Err(RuntimeError::UndefinedSymbol),
         }?;
 
+        self.eval_func(func_args, &args_evaluated, func_body)
+    }
+
+    fn eval_func(
+        &self,
+        arg_names: &[String],
+        args: &[Expr],
+        func_body: &[Expr],
+    ) -> Result<Expr, RuntimeError> {
         let mut evaluator = Evaluator::new();
         evaluator.env = self.env.clone(); // This implements dynamic scoping.
-        for (func_arg_name, arg) in func_args.iter().zip(args_evaluated) {
-            evaluator.env.insert(func_arg_name.clone(), arg);
+        for (func_arg_name, arg) in arg_names.iter().zip(args) {
+            evaluator.env.insert(func_arg_name.clone(), arg.clone());
         }
 
         func_body
@@ -533,5 +547,30 @@ mod tests {
             Ok(Expr::Nil)
         );
         assert_eq!(evaluator.eval("(f)"), Ok(Expr::Int(3)));
+    }
+
+    /// Demonstrate that the language (currently) has dynamic scoping.
+    #[test]
+    fn test_dynamic_scoping() {
+        let mut evaluator = Evaluator::new();
+
+        // Define a function `f` that sets `x` before returning a thunk that
+        // returns `x`. When we set `x` in the outer scope and evaluate the
+        // thunk, which `x` will be used? A lexically-scoped language would use
+        // the interior environment of `f`. However, with our current semantics,
+        // the thunk will use the caller's environment.
+        assert_matches!(
+            evaluator.eval(
+                "
+(def f '()
+  (def x 2)
+  (def g '() x)
+  g)
+"
+            ),
+            Ok(_)
+        );
+        assert_matches!(evaluator.eval("(def x 1)"), Ok(_));
+        assert_matches!(evaluator.eval("((f))"), Ok(Expr::Int(1)));
     }
 }
