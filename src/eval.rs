@@ -526,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn test_progn() {
+    fn test_func_body_many_exprs() {
         let mut evaluator = Evaluator::new();
         assert_eq!(
             evaluator.eval("(def f '() (def x 1) (def y 2) (add x y))"),
