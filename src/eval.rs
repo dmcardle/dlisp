@@ -331,10 +331,7 @@ impl Evaluator {
                 }
             }
             Some(func_def) => Err(RuntimeError::MalformedFunction(func_def.clone())),
-            None => {
-                println!("&&&&& A {func_name}");
-                Err(RuntimeError::UndefinedSymbol)
-            }
+            None => Err(RuntimeError::UndefinedSymbol),
         }?;
 
         let mut evaluator = Evaluator::new();
