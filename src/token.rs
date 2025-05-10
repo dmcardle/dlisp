@@ -37,6 +37,13 @@ impl From<TokenizationError<'_>> for ParseError {
     }
 }
 
+// TODO: Consider alternatives to the non-owning Token type with explicit
+// lifetimes. It would be inefficient to use `String` instead of `&str`, since
+// it would invoke many memory allocations. However, with explicit lifetimes it
+// gets very tricky to implement reusable code that tokenizes lines from stdin;
+// basically, I'd need to keep around owned `String` objects in addition to the
+// `Token` objects that point back to the `String`s, *and* on top of that I have
+// to convince the borrow checker it's safe.
 #[derive(Debug, PartialEq)]
 pub enum Token<'a> {
     Num(i32),
