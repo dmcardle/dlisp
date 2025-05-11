@@ -109,22 +109,23 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn next_num(&mut self) -> Result<Token<'a>, TokenizationError<'a>> {
-        // Determine whether the number is negative.
-        let mut char_indices = self.view.char_indices();
-        let is_negative = match (char_indices.next(), char_indices.next()) {
-            (None, _) => panic!("next_num expects one leading char"),
-            (Some((_, '-')), Some((j, '0'..='9'))) => {
-                // Consume the hyphen.
-                self.view = &self.view[j..];
-                true
+        let mut chars = self.view.chars();
+        let ch = chars.next().expect("next_num expects one leading char");
+
+        // Determine whether to negate the result before parsing any digits.
+        let is_negative = if ch == '-' {
+            match chars.next() {
+                Some('0'..='9') => {
+                    // Consume the hyphen.
+                    self.view = &self.view[1..];
+                    true
+                }
+                Some('-') => return Err(self.make_err("double negation")),
+                Some(_) => return Err(self.make_err("negation of non-numeric")),
+                None => false,
             }
-            (Some((_, '-')), Some((_, '-'))) => {
-                return Err(self.make_err("double negation"));
-            }
-            (Some((_, '-')), Some((_, _))) => {
-                return Err(self.make_err("negation of non-numeric"));
-            }
-            _ => false,
+        } else {
+            false
         };
         // Parse a number composed of digits.
         let (i_end, value) = self
