@@ -35,13 +35,13 @@ pub enum RuntimeError {
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RuntimeError::ParseError(e) => write!(f, "ParseError {}", e),
+            RuntimeError::ParseError(e) => write!(f, "ParseError {e}"),
             RuntimeError::Todo(msg) => write!(f, "TODO {msg}"),
             RuntimeError::Uncallable => write!(f, "Uncallable"),
             RuntimeError::Unaddable => write!(f, "Unaddable"),
             RuntimeError::UndefinedSymbol => write!(f, "Undefined symbol"),
             RuntimeError::CarEmpty => write!(f, "Car called on empty"),
-            RuntimeError::MalformedFunction(s) => write!(f, "Malformed function {}", s),
+            RuntimeError::MalformedFunction(s) => write!(f, "Malformed function {s}"),
             RuntimeError::WrongType { func, want, got } => {
                 write!(f, "{func} wanted a value of type {want}, but got {got}")
             }
@@ -162,7 +162,7 @@ impl Evaluator {
             let expr = self.eval_expr(arg)?;
             match expr {
                 Expr::String(s) => {
-                    println!("{}", s);
+                    println!("{s}");
                 }
                 _ => {
                     return Err(RuntimeError::WrongType {

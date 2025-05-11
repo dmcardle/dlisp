@@ -82,7 +82,7 @@ fn repl(mut evaluator: Evaluator) -> Result<(), String> {
     const PROMPT: &str = "::: ";
 
     loop {
-        print!("{}", PROMPT);
+        print!("{PROMPT}");
         if std::io::stdout().flush().is_err() {
             println!("Failed to flush stdout");
             return Ok(());
@@ -105,11 +105,11 @@ fn repl(mut evaluator: Evaluator) -> Result<(), String> {
         };
 
         // Evaluate and print the string from stdin.
-        let expr_result = evaluator.eval(&buffer).map_err(|e| format!("{}", e));
+        let expr_result = evaluator.eval(&buffer).map_err(|e| format!("{e}"));
         match expr_result {
             Ok(Expr::Nil) => {}
-            Ok(expr) => println!("-> {}", expr),
-            Err(err) => println!("! {}", err),
+            Ok(expr) => println!("-> {expr}"),
+            Err(err) => println!("! {err}"),
         }
     }
 }

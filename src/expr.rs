@@ -21,23 +21,23 @@ impl Display for Expr {
         match self {
             Expr::Nil => write!(f, "nil"),
             Expr::True => write!(f, "true"),
-            Expr::Int(n) => write!(f, "{}", n),
-            Expr::String(s) => write!(f, "\"{}\"", s),
-            Expr::Symbol(s) => write!(f, "{}", s),
+            Expr::Int(n) => write!(f, "{n}"),
+            Expr::String(s) => write!(f, "\"{s}\""),
+            Expr::Symbol(s) => write!(f, "{s}"),
             Expr::Application(e, args) => {
-                let args_repr = String::from_iter(args.iter().map(|a| format!(" {}", a)));
+                let args_repr = String::from_iter(args.iter().map(|a| format!(" {a}")));
                 write!(f, "({}{})", e, &args_repr)
             }
             Expr::Quoted(exprs) => write!(
                 f,
                 "(quote{})",
-                String::from_iter(exprs.iter().map(|a| format!(" {}", a)))
+                String::from_iter(exprs.iter().map(|a| format!(" {a}")))
             ),
             Expr::Def(name, args, expr) => write!(
                 f,
                 "(def {name} '({}) {})",
-                String::from_iter(args.iter().map(|a| format!(" {}", a))),
-                String::from_iter(expr.iter().map(|a| format!(" {}", a)))
+                String::from_iter(args.iter().map(|a| format!(" {a}"))),
+                String::from_iter(expr.iter().map(|a| format!(" {a}")))
             ),
             Expr::Set(name, expr) => write!(f, "(def {name} {expr})"),
         }
